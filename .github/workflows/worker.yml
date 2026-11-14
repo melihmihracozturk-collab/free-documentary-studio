@@ -1,0 +1,46 @@
+# Bulut işçisi: araştırma, ses analizi ve render adımlarını GitHub'ın sunucularında çalıştırır.
+# - Panelden "workflow_dispatch" ile anında tetiklenir.
+# - Her 15 dakikada bir cron ile kuyruğu tarar (yarım kalan işleri sürdürür, Supabase'i uyanık tutar).
+name: worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Tetikleme nedeni"
+        required: false
+        default: "panel"
+  schedule:
+    - cron: "*/15 * * * *"
+
+concurrency:
+  group: fds-worker
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  work:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: worker/requirements.txt
+      - name: Bağımlılıklar
+        run: pip install -r worker/requirements.txt
+      - name: İşçiyi çalıştır
+        if: ${{ env.DATABASE_URL != '' }}
+        working-directory: worker
+        env:
+          WORKER_MAX_MINUTES: "300"
+        run: python -m fds_worker
+      - name: Yapılandırma eksik
+        if: ${{ env.DATABASE_URL == '' }}
+        run: echo "::warning::DATABASE_URL secret tanımlı değil; işçi atlandı."
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}

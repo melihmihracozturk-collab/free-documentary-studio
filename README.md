@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Free Documentary Studio
 
-## Getting Started
+Tek bir konu girişiyle 8–15 dakikalık belgesel ve 45–60 saniyelik YouTube Shorts üreten, tamamen web tabanlı stüdyo.
+Bilgisayarınıza hiçbir şey kurulmaz: panel Vercel'de, veriler Supabase'de, medya Cloudflare R2'de, ağır işler GitHub Actions'ta çalışır.
 
-First, run the development server:
+Mimari ve servis seçimleri: [`docs/STAGE1_MIMARI_RAPORU.md`](docs/STAGE1_MIMARI_RAPORU.md)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Durum
+
+| Stage | Kapsam | Durum |
+|---|---|---|
+| 1 | Mimari ve ücretsiz servis araştırması | ✅ |
+| 2 | Panel, veritabanı şeması, iş kuyruğu, bulut işçisi iskeleti | ✅ |
+| 3 | Araştırma ve senaryo motoru | ⏳ |
+| 4 | Seslendirme yükleme ve analiz (R2) | ⏳ |
+| 5 | Görsel arşiv ve sahne yönetimi | ⏳ |
+| 6 | Bulut video montaj motoru (FFmpeg) | ⏳ |
+| 7 | Shorts motoru | ⏳ |
+| 8 | Entegrasyon, test, optimizasyon | ⏳ |
+
+## Yapı
+
+```
+src/app/(studio)/      Panel sayfaları (Dashboard, Yeni Belgesel, … Ayarlar)
+src/app/actions.ts     Sunucu eylemleri (proje oluşturma, onay, yeniden deneme, ayarlar, giriş)
+src/lib/               Veritabanı, giriş, GitHub tetikleme
+src/proxy.ts           Giriş koruması
+supabase/migrations/   Veritabanı şeması + iş kuyruğu fonksiyonları + render kuralları
+worker/                GitHub Actions'ta çalışan Python işçisi
+.github/workflows/     worker (cron + tetikleme), migrate, ci
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## İş kuyruğu nasıl çalışır?
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Panelde proje oluşturulunca veritabanına 15 adımlık bir iş yazılır.
+2. GitHub Actions işçisi (panelden anında ya da 15 dakikada bir) sıradaki adımı **kilitleyerek** alır, çalıştırır, sonucu yazar.
+3. Uzun adımlarda 30 saniyede bir kalp atışı gönderilir. Atış 10 dakika kesilirse adım yeniden kuyruğa alınır (kaldığı yerden devam).
+4. Hatalı adım 3 kez otomatik denenir, sonra "Hata" olur. Panelden "Yeniden dene" ile sürdürülür.
+5. Kullanıcı adımları: **araştırma onayı** ve **seslendirme yükleme**. İki ses dosyası yüklenince süreç kendiliğinden devam eder.
+6. Veritabanı kuralları:
+   - Analiz edilmiş gerçek seslendirme yoksa render adımı **başlatılamaz**.
+   - Depolama koruma eşiği (varsayılan 8 GB) aşıldıysa yeni render **başlatılamaz**.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Kurulum (tamamı tarayıcıdan)
 
-## Learn More
+1. **Supabase:** Yeni proje → Project Settings → Database → *Transaction pooler* bağlantı adresini kopyalayın.
+2. **GitHub Secrets** (repo → Settings → Secrets and variables → Actions): `DATABASE_URL`.
+3. **Şema:** repo → Actions → *migrate* → *Run workflow*.
+4. **Vercel:** GitHub ile giriş → bu repoyu içe aktarın → ortam değişkenleri: `.env.example` dosyasındakiler.
+5. Panel adresine girin, `ADMIN_PASSWORD` ile giriş yapın.
 
-To learn more about Next.js, take a look at the following resources:
+## Testler
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `worker/tests`: veritabanı kuralları ve işçi (7 test). CI'da Postgres servisiyle çalışır.
+- `npm run lint`, `npm run typecheck`, `npm run build`.
