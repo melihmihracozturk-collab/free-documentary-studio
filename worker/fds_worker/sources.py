@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 from . import http
 
-MAX_TEXT = 12000
+MAX_TEXT = 20000
 MIN_TEXT = 200
 
 
@@ -57,7 +57,7 @@ def wikipedia(query: str, lang: str = "en", limit: int = 3) -> list[Source]:
 
 def crossref(query: str, limit: int = 6) -> list[Source]:
     params = {"query": query, "rows": limit, "filter": "has-abstract:true",
-              "select": "DOI,title,container-title,issued,abstract,publisher,author"}
+              "select": "DOI,title,container-title,issued,abstract,publisher,author,type"}
     if os.environ.get("CROSSREF_MAILTO"):
         params["mailto"] = os.environ["CROSSREF_MAILTO"]
     items = http.get_json("https://api.crossref.org/works", params=params)["message"]["items"]
@@ -70,7 +70,8 @@ def crossref(query: str, limit: int = 6) -> list[Source]:
         out.append(Source(url=f"https://doi.org/{it['DOI']}", title=_clean((it.get("title") or [""])[0]),
                           publisher=(it.get("container-title") or [it.get("publisher", "Crossref")])[0],
                           source_type="academic", collector="crossref", text=text[:MAX_TEXT],
-                          published=str(year) if year else None, extra={"doi": it["DOI"].lower()}))
+                          published=str(year) if year else None,
+                          extra={"doi": it["DOI"].lower(), "work_type": it.get("type", "")}))
     return out
 
 
@@ -87,11 +88,14 @@ def openalex(query: str, limit: int = 6) -> list[Source]:
         text = " ".join(word for _, word in words)
         if len(text) < MIN_TEXT:
             continue
-        venue = ((w.get("primary_location") or {}).get("source") or {}).get("display_name") or "OpenAlex"
+        src_info = (w.get("primary_location") or {}).get("source") or {}
+        venue = src_info.get("display_name") or "OpenAlex"
         doi = (w.get("doi") or "").replace("https://doi.org/", "").lower()
         out.append(Source(url=w.get("doi") or w["id"], title=_clean(w.get("title")), publisher=venue,
                           source_type="academic", collector="openalex", text=text[:MAX_TEXT],
-                          published=str(w.get("publication_year") or ""), extra={"doi": doi} if doi else {}))
+                          published=str(w.get("publication_year") or ""),
+                          extra={"doi": doi, "work_type": "book-chapter" if src_info.get("type") in ("book", "ebook platform", "book series") else "article"}
+                          if doi else {"work_type": "article"}))
     return out
 
 
@@ -141,6 +145,21 @@ def europeana(query: str, limit: int = 5) -> list[Source]:
     return out
 
 
-def independence_key(publisher: str, collector: str) -> str:
-    """Bağımsızlık sayımı: aynı yayıncının farklı dil sürümleri tek kaynak sayılır."""
-    return "wikipedia" if collector == "wikipedia" else (publisher or collector).strip().lower()
+BOOK_TYPES = {"book-chapter", "book-section", "book-part", "book", "monograph", "edited-book", "reference-entry"}
+
+
+def independence_key(src: "Source") -> str:
+    """Bağımsızlık sayımı.
+
+    - Wikipedia: tüm diller ve maddeler TEK kaynak (çeviriler/birbirinden kopyalar).
+    - Kitap bölümleri: aynı kitap TEK kaynak.
+    - Dergi makaleleri: her makale ayrı kaynak (aynı dergide farklı yazarlar).
+    - Arşiv kayıtları: yayıncı/kurum başına tek kaynak.
+    """
+    if src.collector == "wikipedia":
+        return "wikipedia"
+    if src.source_type == "academic":
+        if src.extra.get("work_type") in BOOK_TYPES:
+            return "book:" + (src.publisher or "").strip().lower()
+        return "work:" + (src.extra.get("doi") or src.url)
+    return "pub:" + (src.publisher or src.collector).strip().lower()

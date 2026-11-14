@@ -25,7 +25,7 @@ INSCRIPTION = ("A charcoal inscription found in 2018 dated to 17 October suggest
 FIXTURES = [
     S.Source("https://en.wikipedia.org/wiki/Pompeii", "Pompeii", "Wikipedia", "encyclopedia", "wikipedia", WIKI),
     S.Source("https://doi.org/10.1/pliny", "Letters of Pliny", "Journal of Roman Studies", "academic", "crossref", PLINY,
-             extra={"doi": "10.1/pliny"}),
+             extra={"doi": "10.1/pliny", "work_type": "journal-article"}),
     S.Source("https://doi.org/10.1/pliny", "Letters of Pliny (dup)", "OpenAlex", "academic", "openalex", PLINY,
              extra={"doi": "10.1/pliny"}),
     S.Source("https://doi.org/10.2/insc", "New inscription", "Antiquity", "academic", "openalex", INSCRIPTION,
@@ -229,6 +229,19 @@ def test_validators():
     assert not any("C2" in e for e in script._validate_scene(ok, 1, status))
     errs = script.validate_shorts({"scenes": [scene(15, ["C1"])] * 5}, 140, status)
     assert any("kanca" in e for e in errs)
+
+
+def test_independence_keys():
+    wiki_en = S.Source("a", "Pompeii", "Wikipedia", "encyclopedia", "wikipedia", "x", lang="en")
+    wiki_tr = S.Source("b", "Pompei", "Wikipedia", "encyclopedia", "wikipedia", "x", lang="tr")
+    plos1 = S.Source("c", "A", "PLoS ONE", "academic", "crossref", "x", extra={"doi": "10.1/a", "work_type": "journal-article"})
+    plos2 = S.Source("d", "B", "PLoS ONE", "academic", "crossref", "x", extra={"doi": "10.1/b", "work_type": "journal-article"})
+    ch1 = S.Source("e", "Ch1", "Escape from Pompeii", "academic", "crossref", "x", extra={"doi": "10.2/1", "work_type": "book-chapter"})
+    ch2 = S.Source("f", "Ch2", "Escape from Pompeii", "academic", "openalex", "x", extra={"doi": "10.2/2", "work_type": "book-chapter"})
+    k = S.independence_key
+    assert k(wiki_en) == k(wiki_tr)                 # Wikipedia dilleri tek kaynak
+    assert k(plos1) != k(plos2)                     # aynı dergide farklı makaleler bağımsız
+    assert k(ch1) == k(ch2)                         # aynı kitabın bölümleri tek kaynak
 
 
 def test_relevance_filter():

@@ -77,7 +77,7 @@ def _relevant(src: S.Source, keywords: list[str]) -> bool:
 
 
 # Kaynak türüne göre metin üst sınırı ve toplam bütçe (LLM kotasını korur: ~4-5 çıkarma çağrısı)
-TYPE_CAP = {"encyclopedia": 12000, "academic": 4000, "archive": 3000}
+TYPE_CAP = {"encyclopedia": 20000, "academic": 4000, "archive": 3000}
 TOTAL_BUDGET = 110000
 TYPE_PRIORITY = {"encyclopedia": 0, "academic": 1, "archive": 2}
 
@@ -156,9 +156,9 @@ Return JSON:
     conn.execute("delete from sources where project_id=%s", (p["id"],))
     for i, s in enumerate(unique, 1):
         sid = conn.execute(
-            "insert into sources (project_id, url, title, publisher, source_type, collector, published, ref) "
-            "values (%s,%s,%s,%s,%s,%s,%s,%s) on conflict (project_id, url) do nothing returning id",
-            (p["id"], s.url, s.title, s.publisher, s.source_type, s.collector, s.published, f"S{i}"),
+            "insert into sources (project_id, url, title, publisher, source_type, collector, published, ref, independence_key) "
+            "values (%s,%s,%s,%s,%s,%s,%s,%s,%s) on conflict (project_id, url) do nothing returning id",
+            (p["id"], s.url, s.title, s.publisher, s.source_type, s.collector, s.published, f"S{i}", S.independence_key(s)),
         ).fetchone()
         if sid:
             conn.execute("insert into source_excerpts (source_id, project_id, lang, text) values (%s,%s,%s,%s)",
@@ -176,7 +176,7 @@ Return JSON:
 # ----------------------------------------------------------------- 2) doğrulama
 def _load_sources(conn, project_id):
     return conn.execute(
-        "select s.id, s.ref, s.title, s.publisher, s.collector, s.source_type, e.text "
+        "select s.id, s.ref, s.title, s.publisher, s.collector, s.source_type, s.independence_key, e.text "
         "from sources s join source_excerpts e on e.source_id = s.id where s.project_id=%s order by s.ref", (project_id,)
     ).fetchall()
 
@@ -266,7 +266,7 @@ def verify(conn, step) -> StepResult:
 
     def indep(ref):
         r = text_by_ref[ref]
-        return S.independence_key(r["publisher"], r["collector"])
+        return r["independence_key"] or f"{r['collector']}:{r['publisher']}"
 
     # a) Parça parça iddia çıkarma
     raw: list[dict] = []
