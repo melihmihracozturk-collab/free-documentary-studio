@@ -94,6 +94,23 @@ def run(url: str, max_minutes: float, dry_run: bool, once: bool) -> int:
     return processed
 
 
+def _safe_url_problem(url: str) -> str | None:
+    """Adres biçimini kontrol eder; sorun varsa adresi/şifreyi içermeyen bir açıklama döndürür."""
+    from urllib.parse import urlsplit
+
+    if "[" in url or "]" in url:
+        return "DATABASE_URL içinde köşeli parantez var: [YOUR-PASSWORD] kısmı şifreyle değiştirilmemiş olabilir."
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname or ""
+        _ = parts.port
+    except ValueError:
+        host = ""
+    if not url.startswith(("postgres://", "postgresql://")) or (host != "localhost" and "." not in host):
+        return "DATABASE_URL geçersiz. Şifredeki özel karakterler (@ # / ? % :) adresi bozar; yalnızca harf/rakamlı yeni şifre önerilir."
+    return None
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--max-minutes", type=float, default=float(os.environ.get("WORKER_MAX_MINUTES", 300)))
@@ -103,7 +120,14 @@ def main() -> None:
     url = os.environ.get("DATABASE_URL")
     if not url:
         sys.exit("DATABASE_URL tanımlı değil")
-    run(url, args.max_minutes, args.dry_run, args.once)
+    problem = _safe_url_problem(url)
+    if problem:
+        sys.exit(problem)
+    try:
+        run(url, args.max_minutes, args.dry_run, args.once)
+    except psycopg.OperationalError as e:
+        # Actions günlükleri herkese açık: bağlantı hatasında adres/şifre yazdırılmaz.
+        sys.exit(f"Veritabanına bağlanılamadı ({type(e).__name__}). Supabase projesi duraklatılmış veya şifre yanlış olabilir.")
 
 
 if __name__ == "__main__":

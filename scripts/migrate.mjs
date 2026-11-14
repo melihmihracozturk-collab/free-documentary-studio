@@ -9,6 +9,24 @@ if (!url) {
   console.error("DATABASE_URL tanımlı değil");
   process.exit(1);
 }
+// Bağlantı adresini doğrula. Hata mesajlarında adres veya şifre ASLA yazdırılmaz (Actions günlükleri herkese açık).
+function checkUrl(u) {
+  let parsed;
+  try {
+    parsed = new URL(u);
+  } catch {
+    return "DATABASE_URL geçerli bir adres değil. Şifredeki özel karakterler (@ # / ? % : [ ]) adresi bozar; köşeli parantezleri silin veya yalnızca harf/rakamdan oluşan yeni bir şifre belirleyin.";
+  }
+  if (!/^postgres(ql)?:$/.test(parsed.protocol)) return "DATABASE_URL 'postgresql://' ile başlamalı.";
+  if (u.includes("[") || u.includes("]")) return "DATABASE_URL içinde köşeli parantez var: [YOUR-PASSWORD] kısmı şifreyle değiştirilmemiş olabilir.";
+  if (parsed.hostname !== "localhost" && !parsed.hostname.includes(".")) return "DATABASE_URL içindeki sunucu adı geçersiz görünüyor (şifrede özel karakter olabilir).";
+  return null;
+}
+const problem = checkUrl(url);
+if (problem) {
+  console.error(problem);
+  process.exit(1);
+}
 const sql = postgres(url, { prepare: false, max: 1, onnotice: () => {} });
 const dir = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "supabase", "migrations");
 
@@ -29,6 +47,10 @@ try {
     });
     console.log(`+ ${f}`);
   }
+} catch (e) {
+  // Sürücü hataları bağlantı bilgisini içerebilir: yalnızca güvenli alanları yazdır.
+  console.error(`Migration hatası: ${e.code ?? ""} ${String(e.message ?? e).replaceAll(url, "***").replace(/postgres(ql)?:\/\/\S+/g, "***").slice(0, 300)}`);
+  process.exitCode = 1;
 } finally {
-  await sql.end();
+  await sql.end({ timeout: 5 });
 }
