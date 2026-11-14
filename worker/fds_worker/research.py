@@ -393,7 +393,8 @@ def report(conn, step) -> StepResult:
     listing = "\n".join(f"{c['ref']} [{c['status']}] {c['text']}" for c in usable[:150])
     res = llm.complete_json(conn, SYSTEM, f"""
 Write a concise research summary (150-250 words) in {LANG_NAME.get(p['language'], p['language'])} for a documentary team
-about: {p['topic']}. Use ONLY the claims below. Mention where evidence is single-source.
+about: {p['topic']}. Use ONLY the claims below. Write flowing prose: do NOT list claim ids or status labels.
+Tell the story chronologically, then add one or two sentences on what is debated or rests on a single source.
 Return JSON: {{"summary": "..."}}
 
 CLAIMS:
