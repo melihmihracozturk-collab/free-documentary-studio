@@ -223,6 +223,10 @@ Below are claims extracted from different sources (id. [source] text).
 1) Group claims that state the SAME fact (even if worded differently). Give each group an id "G1", "G2", ...
 2) Identify CONFLICTS: only groups that genuinely CONTRADICT each other about the same thing
    (e.g. different dates for the same event, incompatible numbers). Different facts are NOT conflicts.
+   A general statement does NOT conflict with a more specific one ("in AD 79" vs "in October AD 79" is NOT a conflict;
+   "24 August AD 79" vs "October AD 79" IS a conflict). Put each competing VERSION in its own group and list those groups.
+   If a debate is mentioned by a single claim (e.g. "scholars debate whether August or October"), keep it as one group
+   with category "debate" instead of a conflict.
 
 Return JSON:
 {{"groups": [{{"gid": "G1", "text": "best single wording in {lang}", "category": "...", "importance": 1-3,
