@@ -159,3 +159,57 @@ export async function dbHealthy() {
     return false;
   }
 }
+
+export type Claim = {
+  id: string; ref: string; text: string; status: "verified" | "weak" | "conflict" | "rejected" | "pending";
+  conflict_note: string | null; category: string | null; importance: number; event_date: string | null;
+  support: { source_ref: string; quote: string }[]; independent_sources: number;
+};
+export type Source = {
+  id: string; ref: string; url: string; title: string; publisher: string; source_type: string;
+  collector: string; published: string | null;
+};
+export type Scene = {
+  id: string; kind: "doc" | "shorts"; idx: number; act: string | null; est_duration_sec: string | null;
+  voiceover_text: string; visual_description: string | null; camera_move: string | null; transition: string | null;
+  music: string | null; sfx: string | null; search_keywords: string[]; claim_refs: string[];
+  on_screen_text: string | null; word_count: number | null;
+};
+export type Script = {
+  id: string; kind: "doc" | "shorts"; version: number; word_count: number | null; est_seconds: string | null;
+  voiceover_text: string | null; content: { title?: string; logline?: string }; validation: { errors?: string[]; ok?: boolean };
+  created_at: Date;
+};
+
+export async function getResearch(projectId: string) {
+  const sql = db();
+  const [report] = await sql<{ version: number; summary: string | null; markdown: string; stats: Record<string, number>; created_at: Date }[]>`
+    select version, summary, markdown, stats, created_at from research_reports
+     where project_id = ${projectId} order by version desc limit 1`;
+  const claims = await sql<Claim[]>`
+    select id, ref, text, status, conflict_note, category, importance, event_date, support, independent_sources
+      from claims where project_id = ${projectId}
+     order by case status when 'conflict' then 0 when 'verified' then 1 when 'weak' then 2 else 3 end,
+              importance desc, (substring(ref from 2))::int`;
+  const sources = await sql<Source[]>`
+    select id, ref, url, title, publisher, source_type, collector, published from sources
+     where project_id = ${projectId} order by (substring(ref from 2))::int`;
+  return { report: report ?? null, claims, sources };
+}
+
+export async function getScripts(projectId: string) {
+  const sql = db();
+  const scripts = await sql<Script[]>`
+    select distinct on (kind) id, kind, version, word_count, est_seconds, voiceover_text, content, validation, created_at
+      from scripts where project_id = ${projectId} order by kind, version desc`;
+  const scenes = await sql<Scene[]>`
+    select id, kind, idx, act, est_duration_sec, voiceover_text, visual_description, camera_move, transition, music, sfx,
+           search_keywords, claim_refs, on_screen_text, word_count
+      from scenes where project_id = ${projectId} order by kind, idx`;
+  return {
+    doc: scripts.find((s) => s.kind === "doc") ?? null,
+    shorts: scripts.find((s) => s.kind === "shorts") ?? null,
+    docScenes: scenes.filter((s) => s.kind === "doc"),
+    shortsScenes: scenes.filter((s) => s.kind === "shorts"),
+  };
+}

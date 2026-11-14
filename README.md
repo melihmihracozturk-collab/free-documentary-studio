@@ -11,7 +11,7 @@ Mimari ve servis seçimleri: [`docs/STAGE1_MIMARI_RAPORU.md`](docs/STAGE1_MIMARI
 |---|---|---|
 | 1 | Mimari ve ücretsiz servis araştırması | ✅ |
 | 2 | Panel, veritabanı şeması, iş kuyruğu, bulut işçisi iskeleti | ✅ |
-| 3 | Araştırma ve senaryo motoru | ⏳ |
+| 3 | Araştırma ve senaryo motoru | ✅ (gerçek LLM ile henüz çalıştırılmadı) |
 | 4 | Seslendirme yükleme ve analiz (R2) | ⏳ |
 | 5 | Görsel arşiv ve sahne yönetimi | ⏳ |
 | 6 | Bulut video montaj motoru (FFmpeg) | ⏳ |
@@ -41,15 +41,28 @@ worker/                GitHub Actions'ta çalışan Python işçisi
    - Analiz edilmiş gerçek seslendirme yoksa render adımı **başlatılamaz**.
    - Depolama koruma eşiği (varsayılan 8 GB) aşıldıysa yeni render **başlatılamaz**.
 
+## Araştırma ve senaryo motoru
+
+1. **Toplama:** LLM bir araştırma planı çıkarır. Wikipedia (en + Türkçe), Crossref, OpenAlex, Library of Congress, Internet Archive ve Europeana'dan metin toplanır. Kayıtlar tekilleştirilir, alakasızlar elenir, toplam metin ~110 bin karakterle sınırlanır.
+2. **Doğrulama:** LLM her iddiayı kaynaktan **birebir alıntıyla** çıkarır. Kod, alıntının kaynak metninde gerçekten geçip geçmediğini kontrol eder; geçmeyen iddia atılır. Eşdeğer iddialar birleştirilir. ≥2 bağımsız yayıncı = *doğrulandı*, 1 = *tek kaynak*. Kaynaklar çelişiyorsa *çelişkili* olarak işaretlenir ve nedeni yazılır.
+3. **Rapor:** özet, doğrulama durumu, çelişkiler ve kaynak listesi (Markdown, panelden indirilebilir). Ardından kullanıcı onayı beklenir.
+4. **Senaryo:** 6 bölüm (giriş, arka plan, gelişme, dönüm noktası, sonuçlar, kapanış), her sahnede seslendirme, görsel, arama kelimeleri, kamera, geçiş, müzik, efekt ve iddia kimlikleri. Kelime bütçesi = süre × 135 kelime/dk (±%12). Kod yapıyı kontrol eder, hata varsa LLM'e en fazla 2 kez düzelttirir.
+5. **Shorts:** bağımsız 45–60 sn senaryo; ilk sahne ≤10 kelimelik kanca.
+
+LLM yanıtları veritabanında önbelleğe alınır; bir adımı yeniden çalıştırmak kotayı tekrar harcamaz.
+
 ## Kurulum (tamamı tarayıcıdan)
 
 1. **Supabase:** Yeni proje → Project Settings → Database → *Transaction pooler* bağlantı adresini kopyalayın.
-2. **GitHub Secrets** (repo → Settings → Secrets and variables → Actions): `DATABASE_URL`.
+2. **GitHub Secrets** (repo → Settings → Secrets and variables → Actions):
+   - `DATABASE_URL` (zorunlu)
+   - `GEMINI_API_KEY` (araştırma/senaryo için; Google AI Studio'dan ücretsiz)
+   - opsiyonel: `GROQ_API_KEY`, `OPENROUTER_API_KEY` (+ `OPENROUTER_MODEL` değişkeni, `:free` model), `OPENALEX_API_KEY`, `EUROPEANA_API_KEY`
 3. **Şema:** repo → Actions → *migrate* → *Run workflow*.
 4. **Vercel:** GitHub ile giriş → bu repoyu içe aktarın → ortam değişkenleri: `.env.example` dosyasındakiler.
 5. Panel adresine girin, `ADMIN_PASSWORD` ile giriş yapın.
 
 ## Testler
 
-- `worker/tests`: veritabanı kuralları ve işçi (7 test). CI'da Postgres servisiyle çalışır.
+- `worker/tests`: veritabanı kuralları, işçi, araştırma ve senaryo motoru (12 test). LLM ve ağ taklit edilir. CI'da Postgres servisiyle çalışır.
 - `npm run lint`, `npm run typecheck`, `npm run build`.

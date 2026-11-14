@@ -56,7 +56,7 @@ def run(url: str, max_minutes: float, dry_run: bool, once: bool) -> int:
         requeued = conn.execute("select requeue_stale_steps() as n").fetchone()["n"]
         print(f"[worker {worker_id}] yeniden kuyruğa alınan: {requeued}; işleyiciler: {sorted(handlers) or 'yok'}")
         if not handlers:
-            print("[worker] Kayıtlı işleyici yok (Stage 2). Yapılacak iş yok.")
+            print("[worker] Kayıtlı işleyici yok (LLM anahtarı tanımlı mı?). Yapılacak iş yok.")
             return 0
 
         while time.monotonic() < deadline:

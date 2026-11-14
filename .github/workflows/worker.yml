@@ -44,3 +44,13 @@ jobs:
         run: echo "::warning::DATABASE_URL secret tanımlı değil; işçi atlandı."
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # LLM (en az biri gerekli; yoksa araştırma/senaryo adımları beklemede kalır)
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      GEMINI_MODELS: ${{ vars.GEMINI_MODELS }}
+      GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+      OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+      # Opsiyonel ücretsiz kaynak anahtarları
+      OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+      EUROPEANA_API_KEY: ${{ secrets.EUROPEANA_API_KEY }}

@@ -234,3 +234,10 @@ Anahtarlar sohbete yazılmayacak. GitHub Secrets ve Vercel ortam değişkenlerin
 - Kanal: şimdilik para kazanmıyor, ileride kazanabilir. Bu nedenle:
   - NC (ticari olmayan) lisanslı görseller **varsayılan olarak reddedilecek**. Ayarlardan açılabilir.
   - Arayüz Vercel Hobby ile başlayacak, Cloudflare Workers/Netlify'a taşınabilir kalacak.
+
+---
+
+## 9. Stage 3 sırasında tespit edilen güncellemeler (14 Kasım 2026)
+- **OpenAlex** Şubat 2026'dan beri kullanım bazlı fiyatlandırmaya geçti: anahtarsız günde 0,10 $, **ücretsiz anahtarla günde 1 $** kullanım hakkı. Bir arama ≈0,001 $; bir proje ≈3–6 arama yapar, yani ücretsiz anahtar fazlasıyla yeter. Anahtar `OPENALEX_API_KEY` olarak eklenir. Anahtarsız paylaşımlı IP'lerde (ör. bulut runner'ları) kota çabuk dolabilir; o durumda OpenAlex atlanır, diğer kaynaklar sürer.
+- **Gemini** varsayılan modeli `gemini-3.8-flash` (kararlı, ücretsiz katmanda), yedek `gemini-3.5-flash-lite`. `gemini-2.5-flash` kullanımdan kalkıyor (1 Aralık 2026). Ücretsiz katmanda gönderilen içerik Google ürünlerini geliştirmek için kullanılır.
+- Bir belgesel projesi yaklaşık **10–14 LLM isteği** harcar (plan 1, iddia çıkarma ~4, birleştirme 1, özet 1, senaryo 1–3, Shorts 1–3).

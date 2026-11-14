@@ -19,8 +19,20 @@ class StepResult:
 
 Handler = Callable[[Any, dict], StepResult]
 
-# Stage 2'de üretim için kayıtlı gerçek işleyici yok.
-REAL_HANDLERS: dict[str, Handler] = {}
+def real_handlers() -> dict[str, Handler]:
+    """Gerçek işleyiciler. LLM gerektirenler yalnızca bir LLM anahtarı tanımlıysa kaydedilir."""
+    from . import llm, research, script
+
+    out: dict[str, Handler] = {}
+    if llm.configured():
+        out.update({
+            "research_collect": research.collect,
+            "research_verify": research.verify,
+            "research_report": research.report,
+            "script_doc": script.script_doc,
+            "script_shorts": script.script_shorts,
+        })
+    return out
 
 
 def _dry_run(conn, step: dict) -> StepResult:
@@ -49,4 +61,4 @@ DRY_RUN_KEYS = [
 def registry(dry_run: bool) -> dict[str, Handler]:
     if dry_run:
         return {k: _dry_run for k in DRY_RUN_KEYS}
-    return dict(REAL_HANDLERS)
+    return real_handlers()

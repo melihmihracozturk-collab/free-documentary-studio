@@ -9,27 +9,37 @@ export type ModuleConfig = {
   steps: string[];
   basePath: string;
   planned: string[];
+  /** Modül çalışıyorsa "gelecekler" kartı gizlenir. */
+  active?: boolean;
 };
 
 /** Modül sayfalarının ortak iskeleti: proje seçici + ilgili adımların durumu + bu modülde gelecekler. */
-export async function ModulePage({ config, selected }: { config: ModuleConfig; selected?: string }) {
+export async function ModulePage({ config, selected, render }: {
+  config: ModuleConfig;
+  selected?: string;
+  /** Seçili proje için modüle özel içerik (ör. araştırma raporu). */
+  render?: (project: { id: string; slug: string; title: string }) => Promise<React.ReactNode>;
+}) {
   const projects = (await listProjects()).filter((p) => p.status !== "archived");
   const slug = selected ?? projects[0]?.slug;
   const status = slug ? await getProjectStatus(slug) : null;
   const steps = status?.steps.filter((s) => config.steps.includes(s.step_key)) ?? [];
+  const extra = status && render ? await render(status.project) : null;
 
   return (
     <>
       <PageHeader title={config.title} description={config.description}>
-        <span className="rounded-full bg-white/5 px-2.5 py-1 text-xs text-zinc-400 ring-1 ring-inset ring-white/10">
-          Stage {config.stage}&apos;te etkinleşecek
-        </span>
+        {!config.active && (
+          <span className="rounded-full bg-white/5 px-2.5 py-1 text-xs text-zinc-400 ring-1 ring-inset ring-white/10">
+            Stage {config.stage}&apos;te etkinleşecek
+          </span>
+        )}
       </PageHeader>
 
       {projects.length === 0 ? (
         <Empty>Henüz proje yok. <Link href="/yeni" className="text-amber-300 hover:underline">Yeni belgesel başlatın.</Link></Empty>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[14rem_1fr]">
+        <div className="grid gap-6 lg:grid-cols-[14rem_minmax(0,1fr)]">
           <Card title="Proje">
             <ul className="space-y-0.5">
               {projects.map((p) => (
@@ -56,11 +66,14 @@ export async function ModulePage({ config, selected }: { config: ModuleConfig; s
                 </ul>
               )}
             </Card>
-            <Card title={`Stage ${config.stage} ile bu sayfaya gelecekler`}>
-              <ul className="list-disc space-y-1.5 pl-4 text-sm text-zinc-400">
-                {config.planned.map((x) => <li key={x}>{x}</li>)}
-              </ul>
-            </Card>
+            {extra}
+            {!config.active && (
+              <Card title={`Stage ${config.stage} ile bu sayfaya gelecekler`}>
+                <ul className="list-disc space-y-1.5 pl-4 text-sm text-zinc-400">
+                  {config.planned.map((x) => <li key={x}>{x}</li>)}
+                </ul>
+              </Card>
+            )}
           </div>
         </div>
       )}

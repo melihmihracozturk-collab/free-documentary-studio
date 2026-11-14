@@ -25,7 +25,7 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
           <form action={logout}>
             <button className="flex items-center gap-2 hover:text-zinc-300"><LogOut size={14} /> Çıkış</button>
           </form>
-          <p>Stage 2 · altyapı</p>
+          <p>Stage 3 · araştırma ve senaryo</p>
         </div>
       </aside>
       <div className="min-w-0 flex-1">

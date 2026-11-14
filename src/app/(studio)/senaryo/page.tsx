@@ -1,9 +1,11 @@
 import { ModulePage, type ModuleConfig } from "@/components/ModulePage";
+import { ScriptView } from "@/components/ScriptView";
 
 const config: ModuleConfig = {
   "title": "Senaryo",
   "description": "8–15 dakikalık belgesel ve 45–60 saniyelik Shorts senaryoları, sahne sahne.",
   "stage": 3,
+  "active": true,
   "steps": [
     "script_doc",
     "script_shorts"
@@ -19,5 +21,8 @@ const config: ModuleConfig = {
 
 export default async function Page({ searchParams }: PageProps<"/senaryo">) {
   const { p } = await searchParams;
-  return <ModulePage config={config} selected={typeof p === "string" ? p : undefined} />;
+  return (
+    <ModulePage config={config} selected={typeof p === "string" ? p : undefined}
+                render={async (proj) => <ScriptView projectId={proj.id} slug={proj.slug} />} />
+  );
 }
