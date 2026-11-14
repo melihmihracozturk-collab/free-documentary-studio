@@ -1,0 +1,27 @@
+# Proje durumunu, araştırma raporunu ve senaryoyu çalıştırma özet sayfasına yazar.
+name: show-project
+
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Proje kısa adı (ör. pompeinin-son-gunu)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  show:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/show-project.mjs
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SLUG: ${{ inputs.slug }}
