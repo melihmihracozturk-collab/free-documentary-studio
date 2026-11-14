@@ -11,15 +11,30 @@ if (!url) {
 }
 // Bağlantı adresini doğrula. Hata mesajlarında adres veya şifre ASLA yazdırılmaz (Actions günlükleri herkese açık).
 function checkUrl(u) {
-  let parsed;
+  // Yalnızca yapı bilgisi raporlanır; adresin kendisi veya şifre yazdırılmaz.
+  const hints = [];
+  if (/^\s|\s$/.test(u)) hints.push("başında/sonunda boşluk veya satır sonu var");
+  if (/\s/.test(u.trim())) hints.push("içinde boşluk var");
+  if (/["'`]/.test(u)) hints.push("tırnak işareti var (tırnaksız yapıştırın)");
+  if (/^DATABASE_URL\s*=/i.test(u.trim())) hints.push("başında 'DATABASE_URL=' var (yalnızca adresi yapıştırın)");
+  else if (!/^postgres(ql)?:\/\//.test(u.trim())) hints.push("'postgresql://' ile başlamıyor");
+  if (u.includes("[") || u.includes("]")) hints.push("köşeli parantez var ([YOUR-PASSWORD] yerine şifre yazılmalı, parantezler silinmeli)");
+  const at = (u.match(/@/g) || []).length;
+  if (at !== 1) hints.push(`'@' işareti ${at} kez geçiyor (1 olmalı; şifrede @ olmamalı)`);
+  const afterScheme = u.trim().replace(/^postgres(ql)?:\/\//, "");
+  const userinfo = afterScheme.split("@")[0] ?? "";
+  if (/[#/?%]/.test(userinfo)) hints.push("şifrede # / ? % gibi özel karakter var");
+  if (u.includes("supabase") && !/:6543\/postgres/.test(u)) hints.push("':6543/postgres' ile bitmiyor (Transaction pooler adresi olmalı)");
+  let parsed = null;
   try {
-    parsed = new URL(u);
+    parsed = new URL(u.trim());
   } catch {
-    return "DATABASE_URL geçerli bir adres değil. Şifredeki özel karakterler (@ # / ? % : [ ]) adresi bozar; köşeli parantezleri silin veya yalnızca harf/rakamdan oluşan yeni bir şifre belirleyin.";
+    /* aşağıda raporlanır */
   }
-  if (!/^postgres(ql)?:$/.test(parsed.protocol)) return "DATABASE_URL 'postgresql://' ile başlamalı.";
-  if (u.includes("[") || u.includes("]")) return "DATABASE_URL içinde köşeli parantez var: [YOUR-PASSWORD] kısmı şifreyle değiştirilmemiş olabilir.";
-  if (parsed.hostname !== "localhost" && !parsed.hostname.includes(".")) return "DATABASE_URL içindeki sunucu adı geçersiz görünüyor (şifrede özel karakter olabilir).";
+  if (!parsed || hints.length) {
+    return `DATABASE_URL hatalı (uzunluk ${u.length} karakter). Sorunlar: ${hints.join("; ") || "adres çözümlenemedi"}.`;
+  }
+  if (parsed.hostname !== "localhost" && !parsed.hostname.includes(".")) return "DATABASE_URL içindeki sunucu adı geçersiz.";
   return null;
 }
 const problem = checkUrl(url);
