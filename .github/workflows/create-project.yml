@@ -1,0 +1,48 @@
+# Panel yayında değilken proje oluşturmak için. Actions → create-project → Run workflow.
+name: create-project
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "Belgesel konusu"
+        required: true
+      minutes:
+        description: "Süre (8-15 dk)"
+        required: true
+        default: "11"
+      language:
+        description: "Dil (tr / en)"
+        required: true
+        default: "tr"
+      style:
+        description: "Anlatım"
+        required: true
+        default: "Sinematik kısa belgesel"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/create-project.mjs
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TOPIC: ${{ inputs.topic }}
+          MINUTES: ${{ inputs.minutes }}
+          LANGUAGE: ${{ inputs.language }}
+          STYLE: ${{ inputs.style }}
+      - name: İşçiyi hemen başlat
+        run: gh workflow run worker.yml --ref main -f reason=yeni-proje
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
