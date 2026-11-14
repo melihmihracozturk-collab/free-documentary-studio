@@ -63,10 +63,17 @@ def quote_in_text(quote: str, text: str, threshold: float = 0.85) -> bool:
 
 
 def _relevant(src: S.Source, keywords: list[str]) -> bool:
-    if src.collector == "wikipedia":
+    """Kaynak konuyla ilgili mi? Çekirdek kelime başlıkta geçmeli ya da metnin başında yeterince sık geçmeli.
+
+    Wikipedia aramaları geniş sonuç döndürdüğü için (ör. "Mount Ararat") daha sıkı eşik uygulanır.
+    """
+    keys = [_norm(k) for k in keywords if len(_norm(k)) >= 3]
+    title = _norm(src.title)
+    if any(k in title for k in keys):
         return True
-    blob = _norm(src.title + " " + src.text)
-    return any(_norm(k) in blob for k in keywords if len(_norm(k)) >= 3)
+    head = " " + _norm(src.text[:3000]) + " "
+    need = 3 if src.collector == "wikipedia" else 1
+    return sum(head.count(" " + k) for k in keys) >= need
 
 
 # Kaynak türüne göre metin üst sınırı ve toplam bütçe (LLM kotasını korur: ~4-5 çıkarma çağrısı)
@@ -110,11 +117,12 @@ Return JSON:
 {{"subquestions": [6-10 concrete research questions: background, timeline, key people, places, numbers, causes, consequences],
   "queries_en": [4-6 short English search queries for encyclopedias and academic databases],
   "queries_native": [2-3 short search queries in {LANG_NAME.get(lang, lang)}],
-  "keywords": [5-10 single distinctive keywords to judge relevance, include English and native spellings]}}
+  "keywords": [5-10 single distinctive keywords to judge relevance, include English and native spellings],
+  "core_keywords": [2-4 proper nouns WITHOUT which a source is off-topic (e.g. the place/event/person), English and native spellings]}}
 """, task="research_plan", temperature=0.2)
     q_en = plan.get("queries_en") or [p["topic"]]
     q_native = plan.get("queries_native") or []
-    keywords = plan.get("keywords") or p["topic"].split()
+    keywords = plan.get("core_keywords") or plan.get("keywords") or p["topic"].split()
 
     found: list[S.Source] = []
     errors: list[str] = []
@@ -186,27 +194,18 @@ def _chunks(rows):
         yield chunk
 
 
-def verify(conn, step) -> StepResult:
-    p = _project(conn, step["project_id"])
-    lang = LANG_NAME.get(p["language"], p["language"])
-    rows = _load_sources(conn, p["id"])
-    if not rows:
-        raise RuntimeError("Doğrulanacak kaynak yok; önce araştırma toplama adımı çalışmalı")
-    text_by_ref = {r["ref"]: r for r in rows}
-
-    # a) Parça parça iddia çıkarma
-    raw: list[dict] = []
-    for chunk in _chunks(rows):
-        res = llm.complete_json(conn, SYSTEM, f"""
+def _extract(conn, p, lang, chunk):
+    return llm.complete_json(conn, SYSTEM, f"""
 Topic: {p['topic']}
-From the SOURCES below, extract the factual claims a documentary on this topic would need
-(dates, sequence of events, people, places, numbers, causes, consequences, scholarly debates).
+From the SOURCES below, extract the factual claims a documentary on this topic would need:
+dates and sequence of events, people, places, numbers, causes, consequences, eyewitness accounts,
+scientific findings and scholarly debates. Aim for 15-30 claims if the sources allow; skip off-topic material.
 
 Rules:
 - Every claim must be supported by a VERBATIM quote (5-30 words, copied exactly, original language) from one source.
 - Do not use outside knowledge. Do not invent quotes.
-- Write "text" in {lang}.
-- If sources disagree (e.g. different dates or numbers), extract each version as its own claim.
+- Write "text" in {lang}, one fact per claim.
+- If sources disagree or mention a debate (e.g. different dates or numbers), extract each version as its own claim.
 
 Return JSON: {{"claims": [{{"text": "...", "category": "time|person|place|number|cause|consequence|debate|context",
   "importance": 1-3, "event_date": "free text or null", "source_ref": "S#", "quote": "..."}}]}}
@@ -214,70 +213,137 @@ Return JSON: {{"claims": [{{"text": "...", "category": "time|person|place|number
 SOURCES:
 {''.join(chunk)}
 """, task="claim_extract", temperature=0.1)
-        raw.extend(res.get("claims", []))
 
-    # b) Alıntıları kaynak metninde kontrol et
-    checked = []
-    for i, c in enumerate(raw, 1):
-        src = text_by_ref.get(str(c.get("source_ref", "")).strip())
-        ok = bool(src and c.get("quote") and quote_in_text(c["quote"], src["text"]))
-        checked.append({**c, "id": i, "verified_quote": ok})
-    dropped = [c for c in checked if not c["verified_quote"]]
-    valid = [c for c in checked if c["verified_quote"]]
 
-    # c) Eşdeğer iddiaları birleştir, çelişkileri bul
+def _merge(conn, p, lang, valid):
     listing = "\n".join(f"{c['id']}. [{c['source_ref']}] {c['text']}" for c in valid)
-    merged = llm.complete_json(conn, SYSTEM, f"""
+    return llm.complete_json(conn, SYSTEM, f"""
 Topic: {p['topic']}
 Below are claims extracted from different sources (id. [source] text).
-1) Group claims that state the SAME fact (even if worded differently).
-2) Identify CONFLICTS: groups that contradict each other (different dates, numbers, causes...).
+1) Group claims that state the SAME fact (even if worded differently). Give each group an id "G1", "G2", ...
+2) Identify CONFLICTS: only groups that genuinely CONTRADICT each other about the same thing
+   (e.g. different dates for the same event, incompatible numbers). Different facts are NOT conflicts.
 
 Return JSON:
-{{"groups": [{{"text": "best single wording in {lang}", "category": "...", "importance": 1-3,
+{{"groups": [{{"gid": "G1", "text": "best single wording in {lang}", "category": "...", "importance": 1-3,
    "event_date": "... or null", "members": [claim ids]}}],
- "conflicts": [{{"groups": [indexes into groups array, 0-based], "note": "explanation in {lang}"}}]}}
+ "conflicts": [{{"gids": ["G3", "G7"], "note": "what exactly disagrees, in {lang}"}}]}}
 Every claim id must appear in exactly one group.
 
 CLAIMS:
 {listing}
 """, task="claim_merge", temperature=0.1)
 
-    groups = merged.get("groups", [])
+
+def _cross_check(conn, p, groups, chunk):
+    """Tek kaynaklı iddialar için diğer kaynaklarda birebir destek alıntısı ara."""
+    listing = "\n".join(f"{g['gid']}: {g['text']} (already from {', '.join(sorted(g['refs']))})" for g in groups)
+    return llm.complete_json(conn, SYSTEM, f"""
+Topic: {p['topic']}
+For each CLAIM below, look for passages in the SOURCES that independently support the SAME fact.
+Only report support from sources other than those the claim is already from.
+Copy each supporting quote VERBATIM (5-30 words, original language). If there is no support, omit the claim.
+Do not report passages that merely mention the topic or contradict the claim.
+
+Return JSON: {{"support": [{{"gid": "G#", "source_ref": "S#", "quote": "..."}}]}}
+
+CLAIMS:
+{listing}
+
+SOURCES:
+{''.join(chunk)}
+""", task="claim_crosscheck", temperature=0.1)
+
+
+def verify(conn, step) -> StepResult:
+    p = _project(conn, step["project_id"])
+    lang = LANG_NAME.get(p["language"], p["language"])
+    rows = _load_sources(conn, p["id"])
+    if not rows:
+        raise RuntimeError("Doğrulanacak kaynak yok; önce araştırma toplama adımı çalışmalı")
+    text_by_ref = {r["ref"]: r for r in rows}
+    chunks = list(_chunks(rows))
+
+    def indep(ref):
+        r = text_by_ref[ref]
+        return S.independence_key(r["publisher"], r["collector"])
+
+    # a) Parça parça iddia çıkarma
+    raw: list[dict] = []
+    for chunk in chunks:
+        raw.extend(_extract(conn, p, lang, chunk).get("claims", []))
+
+    # b) Alıntıları kaynak metninde kontrol et
+    checked = []
+    for i, c in enumerate(raw, 1):
+        src = text_by_ref.get(str(c.get("source_ref", "")).strip())
+        ok = bool(src and c.get("quote") and quote_in_text(c["quote"], src["text"]))
+        checked.append({**c, "id": i, "source_ref": str(c.get("source_ref", "")).strip(), "verified_quote": ok})
+    valid = [c for c in checked if c["verified_quote"]]
+    dropped = len(checked) - len(valid)
+    if not valid:
+        raise RuntimeError("Kaynaklarla desteklenen iddia çıkarılamadı")
+
+    # c) Eşdeğer iddiaları birleştir, çelişkileri bul
+    merged = _merge(conn, p, lang, valid)
     by_id = {c["id"]: c for c in valid}
-    conflict_note: dict[int, str] = {}
-    for cf in merged.get("conflicts", []):
-        for gi in cf.get("groups", []):
-            if isinstance(gi, int) and 0 <= gi < len(groups):
-                conflict_note[gi] = cf.get("note", "Kaynaklar çelişiyor")
-
-    # Hiçbir gruba girmeyen geçerli iddiaları kaybetme
-    used = {m for g in groups for m in g.get("members", []) if isinstance(m, int)}
-    for c in valid:
-        if c["id"] not in used:
-            groups.append({"text": c["text"], "category": c.get("category"), "importance": c.get("importance", 2),
-                           "event_date": c.get("event_date"), "members": [c["id"]]})
-
-    conn.execute("delete from claims where project_id=%s", (p["id"],))
-    stats = {"verified": 0, "weak": 0, "conflict": 0, "extracted": len(raw), "quotes_rejected": len(dropped)}
-    for gi, g in enumerate(groups):
-        members = [by_id[m] for m in g.get("members", []) if m in by_id]
+    groups: list[dict] = []
+    used: set[int] = set()
+    for g in merged.get("groups", []):
+        members = [by_id[m] for m in g.get("members", []) if isinstance(m, int) and m in by_id and m not in used]
         if not members:
             continue
-        support = [{"source_ref": m["source_ref"], "quote": m["quote"]} for m in members]
-        indep = {S.independence_key(text_by_ref[m["source_ref"]]["publisher"], text_by_ref[m["source_ref"]]["collector"])
-                 for m in members}
-        status = "conflict" if gi in conflict_note else ("verified" if len(indep) >= 2 else "weak")
+        used |= {m["id"] for m in members}
+        groups.append({**g, "gid": str(g.get("gid") or f"G{len(groups) + 1}"),
+                       "support": [{"source_ref": m["source_ref"], "quote": m["quote"]} for m in members]})
+    for c in valid:  # hiçbir gruba girmeyenleri kaybetme
+        if c["id"] not in used:
+            groups.append({"gid": f"X{c['id']}", "text": c["text"], "category": c.get("category"),
+                           "importance": c.get("importance", 2), "event_date": c.get("event_date"),
+                           "support": [{"source_ref": c["source_ref"], "quote": c["quote"]}]})
+    gid_index = {g["gid"]: g for g in groups}
+    for g in groups:
+        g["refs"] = {s["source_ref"] for s in g["support"]}
+
+    # d) Çapraz doğrulama: tek bağımsız kaynaklı iddialara diğer kaynaklarda destek ara (alıntılar yine kodla kontrol edilir)
+    cross_added = cross_rejected = 0
+    weak = [g for g in groups if len({indep(r) for r in g["refs"]}) < 2]
+    if weak:
+        for chunk in chunks:
+            res = _cross_check(conn, p, weak, chunk)
+            for s in res.get("support", []):
+                g = gid_index.get(str(s.get("gid", "")))
+                ref = str(s.get("source_ref", "")).strip()
+                if not g or ref not in text_by_ref or ref in g["refs"] or not s.get("quote"):
+                    continue
+                if quote_in_text(s["quote"], text_by_ref[ref]["text"]):
+                    g["support"].append({"source_ref": ref, "quote": s["quote"], "cross_check": True})
+                    g["refs"].add(ref)
+                    cross_added += 1
+                else:
+                    cross_rejected += 1
+
+    # e) Çelişkiler (sabit grup kimlikleriyle)
+    conflict_note: dict[str, str] = {}
+    for cf in merged.get("conflicts", []):
+        gids = [str(x) for x in cf.get("gids", []) if str(x) in gid_index]
+        if len(gids) >= 2:
+            for gid in gids:
+                conflict_note[gid] = cf.get("note") or "Kaynaklar çelişiyor"
+
+    conn.execute("delete from claims where project_id=%s", (p["id"],))
+    stats = {"verified": 0, "weak": 0, "conflict": 0, "extracted": len(raw), "quotes_rejected": dropped,
+             "cross_check_added": cross_added, "cross_check_rejected": cross_rejected}
+    for n, g in enumerate(groups, 1):
+        n_indep = len({indep(r) for r in g["refs"]})
+        status = "conflict" if g["gid"] in conflict_note else ("verified" if n_indep >= 2 else "weak")
         stats[status] += 1
-        src_ids = list({text_by_ref[m["source_ref"]]["id"] for m in members})
         conn.execute(
             "insert into claims (project_id, ref, text, status, conflict_note, source_ids, category, importance, "
             "event_date, support, independent_sources) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-            (p["id"], f"C{gi + 1}", g["text"], status, conflict_note.get(gi), src_ids, g.get("category"),
-             max(1, min(3, int(g.get("importance") or 2))), g.get("event_date"), Jsonb(support), len(indep)))
-
-    if not (stats["verified"] + stats["weak"]):
-        raise RuntimeError("Kaynaklarla desteklenen iddia çıkarılamadı")
+            (p["id"], f"C{n}", g["text"], status, conflict_note.get(g["gid"]),
+             list({text_by_ref[r]["id"] for r in g["refs"]}), g.get("category"),
+             max(1, min(3, int(g.get("importance") or 2))), g.get("event_date"), Jsonb(g["support"]), n_indep))
     return StepResult(output=stats)
 
 

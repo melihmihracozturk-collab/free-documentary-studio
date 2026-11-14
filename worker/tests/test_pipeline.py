@@ -125,3 +125,19 @@ def test_cancelled_job_is_not_claimed(conn):
     _, job = make_project(conn)
     conn.execute("update jobs set status='cancelled' where id=%s", (job,))
     assert conn.execute("select * from claim_next_step('w', null)").fetchone() is None
+
+
+def test_reset_from_step(db_url, conn):
+    _, job = make_project(conn)
+    run(db_url, 1, dry_run=True, once=False)
+    s = steps(conn, job)
+    conn.execute("select resolve_input_step(%s)", (s["research_review"]["id"],))
+    run(db_url, 1, dry_run=True, once=False)
+    assert steps(conn, job)["script_doc"]["status"] == "done"
+    n = conn.execute("select reset_from_step(%s, 'research_verify') n", (job,)).fetchone()["n"]
+    s = steps(conn, job)
+    assert s["research_collect"]["status"] == "done"
+    assert s["research_verify"]["status"] == "pending" and s["script_doc"]["status"] == "pending"
+    assert s["research_review"]["status"] == "pending" and n >= 6
+    run(db_url, 1, dry_run=True, once=False)
+    assert steps(conn, job)["research_review"]["status"] == "waiting_input"   # onay yeniden istenir

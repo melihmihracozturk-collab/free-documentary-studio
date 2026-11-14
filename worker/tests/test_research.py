@@ -52,7 +52,8 @@ class Fake:
         if "Plan research" in prompt:
             self.calls.append("plan")
             return {"subquestions": ["Ne zaman?"], "queries_en": ["Pompeii eruption"], "queries_native": ["Pompei"],
-                    "keywords": ["Pompeii", "Vesuvius", "Pliny"]}
+                    "keywords": ["Pompeii", "Vesuvius", "Pliny"],
+                    "core_keywords": ["Pompeii", "Vesuvius"]}
         if "extract the factual claims" in prompt:
             self.calls.append("extract")
             return {"claims": [
@@ -66,6 +67,8 @@ class Fake:
                  "source_ref": ref("Letters of Pliny"), "quote": "that is 24 August AD 79, when a cloud of unusual size"},
                 {"text": "Bir yazıt patlamanın Ekim 79'da olduğunu düşündürüyor.", "category": "debate", "importance": 2,
                  "event_date": "17 Ekim 79", "source_ref": ref("New inscription"), "quote": "dated to 17 October suggests the eruption of Vesuvius happened in autumn"},
+                {"text": "Yaşlı Plinius Stabiae'de öldü.", "category": "person", "importance": 2, "event_date": None,
+                 "source_ref": ref("Pompeii"), "quote": "Pliny the Elder died at Stabiae while attempting a rescue by sea"},
                 # Uydurma alıntı: kaynakta yok → reddedilmeli
                 {"text": "Patlamada 20.000 kişi öldü.", "category": "number", "importance": 3, "event_date": None,
                  "source_ref": ref("Pompeii"), "quote": "the eruption killed exactly twenty thousand inhabitants of the city"},
@@ -75,12 +78,23 @@ class Fake:
             ids = {int(m.group(1)): m.group(2) for m in re.finditer(r"^(\d+)\. \[S\d+\] (.*)$", prompt, re.M)}
             find = lambda frag: [i for i, t in ids.items() if frag in t]
             return {"groups": [
-                {"text": "Vezüv MS 79'da patladı.", "category": "time", "importance": 3, "event_date": "MS 79", "members": find("MS 79'da patladı")},
-                {"text": "Pompei metrelerce kül altında kaldı.", "category": "consequence", "importance": 3, "event_date": None,
+                {"gid": "G1", "text": "Vezüv MS 79'da patladı.", "category": "time", "importance": 3, "event_date": "MS 79", "members": find("MS 79'da patladı")},
+                {"gid": "G2", "text": "Pompei metrelerce kül altında kaldı.", "category": "consequence", "importance": 3, "event_date": None,
                  "members": find("metrelerce")},
-                {"text": "Patlama 24 Ağustos 79'da başladı.", "category": "time", "importance": 3, "event_date": "24 Ağustos 79", "members": find("24 Ağustos")},
-                {"text": "Patlama Ekim 79'da olmuş olabilir.", "category": "debate", "importance": 2, "event_date": "Ekim 79", "members": find("Ekim 79")},
-            ], "conflicts": [{"groups": [2, 3], "note": "Plinius 24 Ağustos der; 2018 yazıtı Ekim'e işaret eder."}]}
+                {"gid": "G3", "text": "Patlama 24 Ağustos 79'da başladı.", "category": "time", "importance": 3, "event_date": "24 Ağustos 79", "members": find("24 Ağustos")},
+                {"gid": "G4", "text": "Patlama Ekim 79'da olmuş olabilir.", "category": "debate", "importance": 2, "event_date": "Ekim 79", "members": find("Ekim 79")},
+                {"gid": "G5", "text": "Yaşlı Plinius Stabiae'de öldü.", "category": "person", "importance": 2, "event_date": None, "members": find("Stabiae")},
+            ], "conflicts": [{"gids": ["G3", "G4"], "note": "Plinius 24 Ağustos der; 2018 yazıtı Ekim'e işaret eder."},
+                             {"gids": ["G1", "G99"], "note": "geçersiz kimlik: yok sayılmalı"}]}
+        if "independently support the SAME fact" in prompt:
+            self.calls.append("crosscheck")
+            out = []
+            if "[S2]" in prompt and "G1:" in prompt:
+                # Gerçek destek: S2 (Pliny) metninde 79 tarihi geçiyor → G1 doğrulanmalı
+                out.append({"gid": "G1", "source_ref": "S2", "quote": "that is 24 August AD 79, when a cloud of unusual size"})
+                # Uydurma destek: S3 metninde yok → reddedilmeli
+                out.append({"gid": "G5", "source_ref": "S3", "quote": "Pliny the Elder died at Stabiae during the rescue"})
+            return {"support": out}
         if "research summary" in prompt:
             self.calls.append("summary")
             return {"summary": "Vezüv MS 79'da patladı; tarih tartışmalı."}
@@ -156,7 +170,11 @@ def test_research_and_script_pipeline(db_url, conn, fake):
     claims = {c["text"]: c for c in conn.execute("select * from claims where project_id=%s", (pid,)).fetchall()}
     assert claims["Pompei metrelerce kül altında kaldı."]["status"] == "verified"          # Wikipedia + dergi
     assert claims["Pompei metrelerce kül altında kaldı."]["independent_sources"] == 2
-    assert claims["Vezüv MS 79'da patladı."]["status"] == "weak"                            # tek kaynak
+    assert claims["Vezüv MS 79'da patladı."]["status"] == "verified"                        # çapraz doğrulamayla 2. kaynak
+    assert any(x.get("cross_check") for x in claims["Vezüv MS 79'da patladı."]["support"])
+    assert claims["Yaşlı Plinius Stabiae'de öldü."]["status"] == "weak"                     # uydurma destek reddedildi
+    assert s["research_verify"]["output"]["cross_check_added"] == 1
+    assert s["research_verify"]["output"]["cross_check_rejected"] == 1
     assert claims["Patlama 24 Ağustos 79'da başladı."]["status"] == "conflict"
     assert "2018" in claims["Patlama Ekim 79'da olmuş olabilir."]["conflict_note"]
     assert not any("20.000" in t for t in claims)                                            # uydurma alıntı elendi
@@ -211,3 +229,18 @@ def test_validators():
     assert not any("C2" in e for e in script._validate_scene(ok, 1, status))
     errs = script.validate_shorts({"scenes": [scene(15, ["C1"])] * 5}, 140, status)
     assert any("kanca" in e for e in errs)
+
+
+def test_relevance_filter():
+    kw = ["Pompeii", "Vesuvius"]
+    ararat = S.Source("u1", "Mount Ararat", "Wikipedia", "encyclopedia", "wikipedia",
+                      "Ararat is a dormant volcano in Turkey. Unlike Vesuvius it has not erupted in historic times. "
+                      "It is the highest peak in Turkey and has a long history in religious texts.")
+    pompeii = S.Source("u2", "Pompeii", "Wikipedia", "encyclopedia", "wikipedia", "An ancient city.")
+    eruption_wiki = S.Source("u3", "AD 79 eruption", "Wikipedia", "encyclopedia", "wikipedia",
+                             "Vesuvius buried Pompeii. Pompeii was a city. Vesuvius is a volcano.")
+    abstract = S.Source("u4", "Ash fall study", "J", "academic", "crossref", "Ash layers from Vesuvius were sampled.")
+    assert not research._relevant(ararat, kw)       # Wikipedia: başlıkta yok, metinde yalnızca 1 geçiş
+    assert research._relevant(pompeii, kw)          # başlıkta geçiyor
+    assert research._relevant(eruption_wiki, kw)
+    assert research._relevant(abstract, kw)         # akademik: 1 geçiş yeterli

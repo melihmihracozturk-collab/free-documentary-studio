@@ -1,0 +1,40 @@
+# Bir projeyi belirtilen adımdan itibaren yeniden çalıştırır ve işçiyi başlatır.
+name: rerun
+
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Proje kısa adı"
+        required: true
+      from_step:
+        description: "Başlangıç adımı"
+        required: true
+        default: research_collect
+        type: choice
+        options: [research_collect, research_verify, research_report, script_doc, script_shorts]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  rerun:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/migrate.mjs && node scripts/rerun.mjs
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SLUG: ${{ inputs.slug }}
+          FROM_STEP: ${{ inputs.from_step }}
+      - name: İşçiyi başlat
+        run: gh workflow run worker.yml --ref main -f reason=rerun
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
