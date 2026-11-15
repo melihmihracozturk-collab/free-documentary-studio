@@ -12,7 +12,7 @@ import re
 
 from psycopg.types.json import Jsonb
 
-from . import llm
+from . import llm, numbers
 from .handlers import StepResult
 from .research import LANG_NAME, SYSTEM
 
@@ -24,6 +24,7 @@ TRANSITIONS = ["cut", "crossfade", "fade_black", "dip_white", "wipe", "slide"]
 MAX_SCENE_WORDS = 75
 TOLERANCE = 0.12
 ACT_TOLERANCE = 0.25
+LENGTH_BOOST = 1.3   # ölçüm: model istenen uzunluğun ~%70'ini yazıyor; istekte hedef büyütülür
 
 
 def words(text: str) -> int:
@@ -157,7 +158,17 @@ Return the corrected complete JSON.""", f"{task}_repair", 0.5)
     return data, errs
 
 
-def _validate_act(data: dict, n_scenes: int, words_target: int, claim_status: dict, act: str) -> list[str]:
+def number_issues(scenes: list[dict], claims: str) -> dict[int, list[str]]:
+    """Sahne → kaynakta olmayan sayılar (1 tabanlı sahne numarası)."""
+    out = {}
+    for i, sc in enumerate(scenes, 1):
+        bad = numbers.unsupported(sc.get("voiceover", "") + " " + (sc.get("on_screen_text") or ""), claims)
+        if bad:
+            out[i] = sorted(numbers.fmt(b) for b in bad)
+    return out
+
+
+def _validate_act(data: dict, n_scenes: int, words_target: int, claim_status: dict, act: str, claims: str = "") -> list[str]:
     scenes = data.get("scenes") or []
     errs = []
     if not scenes:
@@ -166,6 +177,8 @@ def _validate_act(data: dict, n_scenes: int, words_target: int, claim_status: di
         errs.append(f"{act}: {len(scenes)} sahne; yaklaşık {n_scenes} olmalı")
     for i, sc in enumerate(scenes, 1):
         errs += [f"{act} {e}" for e in _validate_scene(sc, i, claim_status)]
+    for i, nums in number_issues(scenes, claims).items():
+        errs.append(f"{act} sahne {i}: kaynakta olmayan sayı {', '.join(nums)} — iddialardaki sayıyı kullanın veya sayıyı kaldırın")
     # Bölüm uzunluğunda geniş tolerans: toplamı editör turu tamamlar (gereksiz düzeltme çağrısı = kota israfı).
     total = sum(words(sc.get("voiceover", "")) for sc in scenes)
     lo, hi = int(words_target * (1 - ACT_TOLERANCE)), int(words_target * (1 + ACT_TOLERANCE))
@@ -214,7 +227,8 @@ You are writing ONE act of a {p['target_minutes']}-minute documentary in {lang}:
 Logline: {outline.get('logline', '')}
 
 ACT: {a} = {ACT_TR[a]}
-Write EXACTLY {n_scenes} scenes, about {SCENE_WORDS} words of narration each (total about {words_target} words, ±10%).
+Write EXACTLY {n_scenes} scenes, about {int(SCENE_WORDS * LENGTH_BOOST)} words of narration each (total about {int(words_target * LENGTH_BOOST)} words).
+Each scene needs 3-4 full sentences. Short scenes are the most common mistake — write fully.
 Planned beats: {json.dumps(b.get('beats', []), ensure_ascii=False)}
 
 {STYLE}
@@ -232,7 +246,7 @@ Return JSON: {{"scenes": [{SCENE_SCHEMA}]}}
 CLAIMS:
 {claims}
 """
-        data, errs = _write_with_repair(conn, prompt, lambda d, a=a, w=words_target, n=n_scenes: _validate_act(d, n, w, status, a),
+        data, errs = _write_with_repair(conn, prompt, lambda d, a=a, w=words_target, n=n_scenes: _validate_act(d, n, w, status, a, claims),
                                         f"script_act_{a}")
         scenes = data.get("scenes") or []
         acts_out.append({"act": a, "scenes": scenes})
@@ -249,11 +263,13 @@ CLAIMS:
     full = {"title": outline.get("title") or p["title"], "logline": outline.get("logline"),
             "acts": [{"act": a, "scenes": [sc for sc in scenes if sc.get("_act") == a]} for a in ACTS],
             "editor_notes": edits.get("notes", [])}
-    final_errs = validate_doc(full, budget, status)
+    final_errs = validate_doc(full, budget, status) + [
+        f"sahne {i}: kaynakta olmayan sayı {', '.join(n)}" for i, n in number_issues(scenes, claims).items()]
     version, total = _save(conn, p["id"], "doc", full, scenes, wpm, final_errs)
     return StepResult(output={"version": version, "scenes": len(scenes), "words": total, "words_before_edit": words_before,
                               "est_minutes": round(total / wpm, 2), "budget_words": budget,
-                              "repeats_after": len(find_repeats(scenes)), "editor_notes": edits.get("notes", [])[:10],
+                              "repeats_after": len(find_repeats(scenes)), "editor_notes": edits.get("notes", [])[:12],
+                              "number_issues_after": edits.get("number_issues_after", {}),
                               "validation_errors": final_errs})
 
 
@@ -267,20 +283,46 @@ def find_repeats(scenes: list[dict]) -> dict[str, list[int]]:
     return {r: idx for r, idx in used.items() if len(idx) > 1}
 
 
-def apply_edits(scenes: list[dict], edits: dict) -> list[dict]:
-    """Editörün sahne bazlı düzeltmelerini uygular: replace / delete / insert_after (1 tabanlı, ORİJİNAL numaralar)."""
+def apply_edits(scenes: list[dict], edits: dict, claims: str = "", guard: bool = False) -> tuple[list[dict], list[str]]:
+    """Editörün sahne bazlı düzeltmelerini uygular: replace / delete / insert_after (1 tabanlı, ORİJİNAL numaralar).
+
+    guard=True: sahneyi %85'ten fazla kısaltan veya kaynakta olmayan sayı ekleyen değişiklik reddedilir;
+    silme yalnızca sahnenin tüm iddiaları başka sahnede de geçiyorsa kabul edilir.
+    """
     out = [dict(sc) for sc in scenes]
+    rejected: list[str] = []
     for e in edits.get("replace", []):
         i = e.get("scene")
-        if isinstance(i, int) and 1 <= i <= len(out):
-            for k in ("voiceover", "claim_refs", "visual_description", "on_screen_text", "disputed"):
-                if k in e:
-                    out[i - 1][k] = e[k]
-    deleted = {e for e in edits.get("delete", []) if isinstance(e, int)}
+        if not (isinstance(i, int) and 1 <= i <= len(out)):
+            continue
+        old_vo, new_vo = out[i - 1].get("voiceover", ""), e.get("voiceover", out[i - 1].get("voiceover", ""))
+        if guard:
+            if words(new_vo) < 0.85 * words(old_vo):
+                rejected.append(f"sahne {i}: kısaltma reddedildi")
+                continue
+            if numbers.unsupported(new_vo, claims) - numbers.unsupported(old_vo, claims):
+                rejected.append(f"sahne {i}: yeni kaynaksız sayı reddedildi")
+                continue
+        for k in ("voiceover", "claim_refs", "visual_description", "on_screen_text", "disputed"):
+            if k in e:
+                out[i - 1][k] = e[k]
+    deleted = set()
+    for i in edits.get("delete", []):
+        if not (isinstance(i, int) and 1 <= i <= len(out)):
+            continue
+        if guard:
+            others = {r for j, sc in enumerate(out, 1) if j != i and j not in deleted for r in sc.get("claim_refs") or []}
+            if not set(out[i - 1].get("claim_refs") or []) <= others:
+                rejected.append(f"sahne {i}: silme reddedildi (bilgisi başka sahnede yok)")
+                continue
+        deleted.add(i)
     inserts: dict[int, list[dict]] = {}
     for e in edits.get("insert_after", []):
         i, sc = e.get("scene"), e.get("new_scene")
         if isinstance(i, int) and 0 <= i <= len(out) and isinstance(sc, dict) and sc.get("voiceover"):
+            if guard and numbers.unsupported(sc["voiceover"], claims):
+                rejected.append(f"sahne {i} sonrası ekleme: kaynaksız sayı reddedildi")
+                continue
             inserts.setdefault(i, []).append(sc)
     result = [{**sc, "_act": out[0].get("_act")} for sc in inserts.get(0, [])]
     for i, sc in enumerate(out, 1):
@@ -289,28 +331,35 @@ def apply_edits(scenes: list[dict], edits: dict) -> list[dict]:
         for new in inserts.get(i, []):
             base = {k: sc.get(k) for k in ("_act", "camera_move", "transition", "music", "sfx", "search_keywords", "visual_description")}
             result.append({**base, **new, "_act": sc.get("_act")})
-    return result
+    return result, rejected
+
+
+def _listing(scenes):
+    return "\n".join(f"{i}. [{sc.get('_act')}] ({', '.join(sc.get('claim_refs') or [])}) {sc.get('voiceover')}"
+                     for i, sc in enumerate(scenes, 1))
+
+
+def _unused(scenes, claims):
+    used = {r for sc in scenes for r in sc.get("claim_refs") or []}
+    return [line for line in claims.splitlines() if line.split(" ", 1)[0] not in used]
 
 
 def _edit(conn, p, kind: str, scenes: list[dict], claims: str, status: dict, budget: int, extra_rules: str) -> tuple[list[dict], dict]:
     lang = LANG_NAME.get(p["language"], p["language"])
     total = sum(words(sc.get("voiceover", "")) for sc in scenes)
-    repeats = find_repeats(scenes)
-    used = {r for sc in scenes for r in sc.get("claim_refs") or []}
-    unused = [line for line in claims.splitlines() if line.split(" ", 1)[0] not in used]
-    listing = "\n".join(f"{i}. [{sc.get('_act')}] ({', '.join(sc.get('claim_refs') or [])}) {sc.get('voiceover')}"
-                        for i, sc in enumerate(scenes, 1))
-    deficit = budget - total
+    nums = number_issues(scenes, claims)
     edits = llm.complete_json(conn, SYSTEM, f"""
 You are the fact-checking EDITOR of a documentary script in {lang} about: {p['topic']}.
 
-Fix the script with minimal, targeted edits:
-1. FACTS: every factual detail (event, number, date, cause, physical detail like "roofs collapsed", duration like "in seconds")
+Fix the script with minimal, targeted edits. Never shorten a scene; rewrite it at similar or greater length.
+1. NUMBERS: these scenes contain numbers that are NOT in the claims (scene: numbers): {json.dumps(nums, ensure_ascii=False)}
+   Replace them with the exact number from the claims, or remove the number.
+2. FACTS: every factual detail (event, number, date, cause, physical detail like "roofs collapsed", duration like "in seconds")
    must be supported by the CLAIMS. Rewrite sentences that add unsupported facts. Atmosphere without new facts is fine.
    A hypothesis in the claims must stay a hypothesis ("…olabileceği düşünülüyor").
-2. REPETITION: do not state the same fact twice. Repeated claim usage (claim: scenes): {json.dumps(repeats, ensure_ascii=False)}
-3. TENSE: facts true today (e.g. UNESCO listing) use present tense ("yer alıyor"); the story uses narrative past (-dı/-di).
-4. LENGTH: the script has {total} words, target {budget}. {"Add about " + str(deficit) + " words by INSERTING new scenes that use UNUSED claims (and by enriching thin scenes)." if deficit > budget * 0.05 else "Keep the length roughly the same."}
+3. REPETITION: do not state the same fact twice. Repeated claim usage (claim: scenes): {json.dumps(find_repeats(scenes), ensure_ascii=False)}
+   Prefer rewriting the second occurrence with a different (unused) claim over deleting it.
+4. TENSE: facts true today (e.g. UNESCO listing) use present tense ("yer alıyor"); the story uses narrative past (-dı/-di).
 {extra_rules}
 
 {STYLE}
@@ -322,17 +371,47 @@ Return JSON with scene numbers from the CURRENT list (1-based):
                                                 "search_keywords": ["..."], "on_screen_text": null}}}}],
   "notes": ["short list of what you fixed"]}}
 
-CURRENT SCRIPT:
-{listing}
+CURRENT SCRIPT ({total} words):
+{_listing(scenes)}
 
-UNUSED CLAIMS (good material for new scenes):
-{chr(10).join(unused) or "none"}
+UNUSED CLAIMS:
+{chr(10).join(_unused(scenes, claims)) or "none"}
 
 ALL CLAIMS:
 {claims}
 """, task=f"script_edit_{kind}", temperature=0.4)
-    return apply_edits(scenes, edits), edits
+    scenes, rejected = apply_edits(scenes, edits, claims, guard=True)
+    notes = list(edits.get("notes", [])) + rejected
 
+    # Genişletme turu: hâlâ kısa ise yalnızca YENİ sahne eklenir (mevcut sahnelere dokunulmaz)
+    total = sum(words(sc.get("voiceover", "")) for sc in scenes)
+    deficit = budget - total
+    if deficit > budget * TOLERANCE:
+        n_new = max(1, round(deficit / SCENE_WORDS))
+        ext = llm.complete_json(conn, SYSTEM, f"""
+The documentary script in {lang} about {p['topic']} is too short: {total} words, target {budget}.
+INSERT about {n_new} NEW scenes of {SCENE_WORDS}-{SCENE_WORDS + 15} words each where they fit the story best.
+Use the UNUSED CLAIMS first (new facts, not repetition). Do not change existing scenes.
+Every fact and number must come from the claims.
+{extra_rules}
+
+{STYLE}
+
+Return JSON: {{"insert_after": [{{"scene": n, "new_scene": {{"voiceover": "...", "claim_refs": ["C#"],
+  "visual_description": "...", "search_keywords": ["..."], "on_screen_text": null}}}}]}}
+
+CURRENT SCRIPT:
+{_listing(scenes)}
+
+UNUSED CLAIMS:
+{chr(10).join(_unused(scenes, claims)) or "none"}
+
+ALL CLAIMS:
+{claims}
+""", task=f"script_extend_{kind}", temperature=0.6)
+        scenes, rejected = apply_edits(scenes, {"insert_after": ext.get("insert_after", [])}, claims, guard=True)
+        notes += [f"genişletme: {len(ext.get('insert_after', []))} sahne önerildi"] + rejected
+    return scenes, {"notes": notes, "number_issues_before": nums, "number_issues_after": number_issues(scenes, claims)}
 
 SHORTS_PLAN = [7, 17, 17, 17, 17, 17, 17, 23]   # kelime/sahne: 3 sn kanca + gövde + kapanış (≈132 kelime ≈ 55 sn)
 
@@ -352,7 +431,7 @@ def script_shorts(conn, step) -> StepResult:
 Write an independent YouTube Shorts script ({p['shorts_seconds']} seconds, vertical 9:16) in {lang}.
 Topic: {p['topic']}. The full documentary is titled: "{doc['t'] if doc else p['title']}".
 
-Write EXACTLY {len(per_scene)} scenes with these narration lengths in words: {per_scene} (total about {budget} words).
+Write EXACTLY {len(per_scene)} scenes with these narration lengths in words: {[round(w * LENGTH_BOOST) if i else w for i, w in enumerate(per_scene)]}.
 - Scene 1 = HOOK (about 3 seconds): instant curiosity — a shocking fact, a question or tension. It must be TRUE to the claims.
 - One focused story arc with escalating tension; it must make sense on its own.
 - Last scene: a natural line that makes viewers want the full documentary (no "like and subscribe").
@@ -378,7 +457,8 @@ CLAIMS:
                           "5. This is a 45-60 s Shorts: keep scene 1 as a hook of at most 8 words. Keep 6-10 scenes.\n"
                           "6. The last line invites to the full documentary naturally — no 'izleyin', 'hemen', 'abone ol', 'beğen'.")
     data = {**data, "scenes": scenes, "editor_notes": edits.get("notes", [])}
-    errs = validate_shorts(data, budget, status)
+    errs = validate_shorts(data, budget, status) + [
+        f"sahne {i}: kaynakta olmayan sayı {', '.join(n)}" for i, n in number_issues(scenes, claims).items()]
     version, total = _save(conn, p["id"], "shorts", data, scenes, wpm, errs)
     return StepResult(output={"version": version, "scenes": len(scenes), "words": total,
                               "est_seconds": round(total / wpm * 60, 1), "budget_words": budget,

@@ -111,7 +111,9 @@ class Fake:
             total = int(re.search(r"total about (\d+) words", prompt).group(1))
             if self.bad_first_script and act == "giris" and "previous answer" not in prompt:
                 return {"scenes": [scene(5, ["C99"])]}
-            return {"scenes": [scene(total // n, ["C1"]) for _ in range(n)]}
+            # Gerçek model gibi: istenenin ~1/LENGTH_BOOST'u kadar yazar (ölçülen kısa yazma eğilimi)
+            per = int(total / script.LENGTH_BOOST) // n
+            return {"scenes": [scene(per, ["C1"]) for _ in range(n)]}
         if "fact-checking EDITOR" in prompt:
             kind = "doc" if "script_edit" not in prompt and "Shorts" not in prompt.split("Fix the script")[1][:2000] else "shorts"
             self.calls.append("edit")
@@ -123,7 +125,8 @@ class Fake:
         if "YouTube Shorts" in prompt:
             self.calls.append("shorts")
             sizes = json.loads(re.search(r"narration lengths in words: (\[[^\]]*\])", prompt).group(1))
-            return {"title": "Pompei", "scenes": [scene(w, ["C2"]) for w in sizes]}
+            return {"title": "Pompei", "scenes": [scene(round(w / script.LENGTH_BOOST) if i else w, ["C2"])
+                                                  for i, w in enumerate(sizes)]}
         raise AssertionError("beklenmeyen istem: " + prompt[:200])
 
 
@@ -278,10 +281,27 @@ def test_apply_edits_and_repeats():
                           "transition": "cut", "music": "m", "sfx": "s", "search_keywords": ["k"], "visual_description": "v"}
     scenes = [sc("bir", ["C1"]), sc("iki", ["C1", "C2"]), sc("üç", ["C3"])]
     assert script.find_repeats(scenes) == {"C1": [1, 2]}
-    out = script.apply_edits(scenes, {"replace": [{"scene": 3, "voiceover": "ÜÇ", "claim_refs": ["C4"]}],
+    out, _ = script.apply_edits(scenes, {"replace": [{"scene": 3, "voiceover": "ÜÇ", "claim_refs": ["C4"]}],
                                       "delete": [2],
                                       "insert_after": [{"scene": 1, "new_scene": {"voiceover": "yeni", "claim_refs": ["C5"]}},
                                                        {"scene": 99, "new_scene": {"voiceover": "geçersiz"}}]})
     assert [s["voiceover"] for s in out] == ["bir", "yeni", "ÜÇ"]
     assert out[1]["_act"] == "gelisme" and out[1]["camera_move"] == "static"   # eklenen sahne komşusundan alanları alır
     assert out[2]["claim_refs"] == ["C4"]
+
+
+def test_guarded_edits():
+    sc = lambda t, refs: {"voiceover": t, "claim_refs": refs, "_act": "gelisme"}
+    claims = "C1 (MS 62) MS 62 depremi. C2 Patlama iki gün sürdü."
+    scenes = [sc("Milattan sonra altmış iki yılında büyük bir deprem şehri sarstı ve evler hasar gördü.", ["C1"]),
+              sc("Patlama tam iki gün sürdü ve gökyüzü karardı, insanlar kaçtı.", ["C2"]),
+              sc("Patlama iki gün boyunca sürdü.", ["C2"])]
+    out, rej = script.apply_edits(scenes, {
+        "replace": [{"scene": 1, "voiceover": "Milattan sonra altmış yılında büyük bir deprem şehri sarstı ve evler hasar gördü."},
+                    {"scene": 2, "voiceover": "Kısa."}],
+        "delete": [3, 1],
+        "insert_after": [{"scene": 2, "new_scene": {"voiceover": "Üç yüz kişi öldü."}}]}, claims, guard=True)
+    assert "altmış iki" in out[0]["voiceover"]                     # yeni kaynaksız sayı (60) reddedildi
+    assert out[1]["voiceover"].startswith("Patlama tam")          # kısaltma reddedildi
+    assert len(out) == 2                                          # sahne 3 silindi (C2 başka sahnede var), sahne 1 silinmedi
+    assert len(rej) == 4                                          # 60, kısaltma, silme(1), ekleme(300)
