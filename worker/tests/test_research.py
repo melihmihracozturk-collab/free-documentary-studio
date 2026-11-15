@@ -47,6 +47,7 @@ class Fake:
 
     def __init__(self, bad_first_script=False):
         self.calls = []
+        self.edit_prompts = []
         self.bad_first_script = bad_first_script
 
     def __call__(self, system, prompt):
@@ -111,6 +112,14 @@ class Fake:
             if self.bad_first_script and act == "giris" and "previous answer" not in prompt:
                 return {"scenes": [scene(5, ["C99"])]}
             return {"scenes": [scene(total // n, ["C1"]) for _ in range(n)]}
+        if "fact-checking EDITOR" in prompt:
+            kind = "doc" if "script_edit" not in prompt and "Shorts" not in prompt.split("Fix the script")[1][:2000] else "shorts"
+            self.calls.append("edit")
+            self.edit_prompts.append(prompt)
+            return {"replace": [{"scene": 1, "voiceover": "Gökyüzü karardı ve şehir sustu.", "claim_refs": ["C1"]}],
+                    "delete": [2], "insert_after": [{"scene": 1, "new_scene": {"voiceover": "Yeni sahne metni burada.",
+                                                     "claim_refs": ["C2"], "visual_description": "harita",
+                                                     "search_keywords": ["map"]}}], "notes": ["tekrar giderildi"]}
         if "YouTube Shorts" in prompt:
             self.calls.append("shorts")
             sizes = json.loads(re.search(r"narration lengths in words: (\[[^\]]*\])", prompt).group(1))
@@ -262,3 +271,17 @@ def test_relevance_filter():
     assert research._relevant(pompeii, kw)          # başlıkta geçiyor
     assert research._relevant(eruption_wiki, kw)
     assert research._relevant(abstract, kw)         # akademik: 1 geçiş yeterli
+
+
+def test_apply_edits_and_repeats():
+    sc = lambda t, refs: {"voiceover": t, "claim_refs": refs, "_act": "gelisme", "camera_move": "static",
+                          "transition": "cut", "music": "m", "sfx": "s", "search_keywords": ["k"], "visual_description": "v"}
+    scenes = [sc("bir", ["C1"]), sc("iki", ["C1", "C2"]), sc("üç", ["C3"])]
+    assert script.find_repeats(scenes) == {"C1": [1, 2]}
+    out = script.apply_edits(scenes, {"replace": [{"scene": 3, "voiceover": "ÜÇ", "claim_refs": ["C4"]}],
+                                      "delete": [2],
+                                      "insert_after": [{"scene": 1, "new_scene": {"voiceover": "yeni", "claim_refs": ["C5"]}},
+                                                       {"scene": 99, "new_scene": {"voiceover": "geçersiz"}}]})
+    assert [s["voiceover"] for s in out] == ["bir", "yeni", "ÜÇ"]
+    assert out[1]["_act"] == "gelisme" and out[1]["camera_move"] == "static"   # eklenen sahne komşusundan alanları alır
+    assert out[2]["claim_refs"] == ["C4"]
