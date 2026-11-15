@@ -126,3 +126,35 @@ def test_commons_thumb_from_original():
     assert images.commons_thumb(u) == ("https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/%27Vesuvius%27_by_Dahl.JPG/"
                                        "500px-%27Vesuvius%27_by_Dahl.JPG")
     assert images.commons_thumb("https://upload.wikimedia.org/wikipedia/commons/a/ab/Map.tif") .endswith("Map.tif")   # tif: dokunma
+
+
+def test_commons_download_url_uses_standard_thumbs():
+    orig = "https://upload.wikimedia.org/wikipedia/commons/5/5b/Colonna_Ionica_a_Pompei.jpg?utm_source=x"
+    assert images.commons_download_url(orig, 3000).endswith("/1920px-Colonna_Ionica_a_Pompei.jpg")
+    assert images.commons_download_url(orig, 5000).endswith("/3840px-Colonna_Ionica_a_Pompei.jpg")
+    assert images.commons_download_url(orig, 1000).endswith("/960px-Colonna_Ionica_a_Pompei.jpg")
+    t = "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/X.jpg/3840px-X.jpg"
+    assert images.commons_download_url(t, 5000) == t
+
+
+def test_download_falls_back_to_1920(conn, s3, monkeypatch):  # noqa: F811
+    from PIL import Image
+    pid, job = _setup(conn)
+    orig = "https://upload.wikimedia.org/wikipedia/commons/5/5b/Ruins.jpg"
+    fake_archives(monkeypatch, [cand("Vesuvius eruption painting R", "commons", "pd", w=5000, url=orig)])
+    buf = io.BytesIO(); Image.new("RGB", (1920, 1280)).save(buf, "JPEG")
+    asked = []
+
+    class R:
+        content = buf.getvalue()
+
+    def req(method, url, **k):
+        asked.append(url)
+        if "3840px" in url:
+            raise http.RateLimited("429")
+        return R()
+    monkeypatch.setattr(http, "request", req)
+    res = VZ.match(conn, steps(conn, job)["asset_match"]).output
+    assert res["downloaded"] >= 1
+    assert any("3840px-Ruins.jpg" in u for u in asked) and any("1920px-Ruins.jpg" in u for u in asked)
+    assert not any(u == orig for u in asked)                                 # orijinale hiç gidilmedi

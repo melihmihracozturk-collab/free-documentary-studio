@@ -53,6 +53,20 @@ def commons_thumb(url: str, width: int = 500) -> str:
     return f"https://upload.wikimedia.org/wikipedia/commons/thumb/{a}/{ab}/{name}/{width}px-{name}"
 
 
+STANDARD_WIDTHS = (3840, 1920, 1280, 960, 500)   # Wikimedia'nın verdiği standart küçük resim genişlikleri
+
+
+def commons_download_url(url: str, width: int | None) -> str:
+    """İndirme adresi: orijinal dosya yerine, orijinal genişliği aşmayan en büyük standart küçük resim.
+
+    Orijinal dosyalara toplu erişim kota sınırına (429) takılıyor; standart küçük resimler takılmıyor.
+    """
+    if "/commons/thumb/" in (url or ""):
+        return url                                         # zaten standart küçük resim (API'nin döndürdüğü)
+    w = next((x for x in STANDARD_WIDTHS if width and x <= width), 1920)
+    return commons_thumb(url, w)
+
+
 def commons(query: str, limit: int = 8) -> list[ImageCandidate]:
     data = http.get_json("https://commons.wikimedia.org/w/api.php", params={
         "action": "query", "format": "json", "generator": "search", "gsrnamespace": 6,
@@ -75,7 +89,8 @@ def commons(query: str, limit: int = 8) -> list[ImageCandidate]:
         cls = classify(lic_raw, md.get("LicenseUrl"))
         out.append(ImageCandidate(
             source="commons", title=title[:300], page_url=ii.get("descriptionurl", ""),
-            file_url=ii.get("thumburl") or ii.get("url", ""), thumb_url=commons_thumb(ii.get("url", "")),
+            file_url=commons_download_url(ii.get("thumburl") or ii.get("url", ""), ii.get("width")),
+            thumb_url=commons_thumb(ii.get("url", "")),
             license_raw=lic_raw[:200], license_class=cls, license_url=md.get("LicenseUrl") or None, author=author,
             attribution=f"{title} — {author or 'bilinmeyen'} — {md.get('LicenseShortName') or lic_raw} — Wikimedia Commons",
             width=ii.get("width"), height=ii.get("height"),

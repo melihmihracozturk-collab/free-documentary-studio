@@ -189,14 +189,24 @@ def download_selected(conn, pid, slug) -> int:
                         "and a.storage_key is null", (pid,)).fetchall()
     n = 0
     for a in rows:
-        try:
-            data, w, h = fetch_image(a["file_url"])
-        except Exception as e:  # noqa: BLE001
-            conn.execute("update assets set reject_reason=%s where id=%s", (f"indirilemedi: {type(e).__name__}"[:200], a["id"]))
+        urls = [a["file_url"]]
+        if a["source"] == "commons":
+            # Eski kayıtlar orijinal adresi tutuyor olabilir → standart küçük resme çevir; olmazsa 1920 px dene
+            urls = [images.commons_download_url(a["file_url"], a["width"])]
+            urls.append(images.commons_thumb(re.sub(r"/thumb/(.+)/\d+px-[^/]+$", r"/\1", urls[0]), 1920))
+        data = None
+        for u in dict.fromkeys(urls):
+            try:
+                data, w, h = fetch_image(u)
+                break
+            except Exception as e:  # noqa: BLE001
+                err = f"indirilemedi: {type(e).__name__}"
+        if data is None:
+            conn.execute("update assets set reject_reason=%s where id=%s", (err[:200], a["id"]))
             continue
         key = storage.project_key(slug, "assets", f"{a['id']}.jpg")
         sha = storage.upload_bytes(key, data, "image/jpeg")
-        conn.execute("update assets set storage_key=%s, sha256=%s, bytes=%s, width=%s, height=%s where id=%s",
+        conn.execute("update assets set storage_key=%s, sha256=%s, bytes=%s, width=%s, height=%s, reject_reason=null where id=%s",
                      (key, sha, len(data), w, h, a["id"]))
         n += 1
     return n
