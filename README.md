@@ -12,7 +12,7 @@ Mimari ve servis seçimleri: [`docs/STAGE1_MIMARI_RAPORU.md`](docs/STAGE1_MIMARI
 | 1 | Mimari ve ücretsiz servis araştırması | ✅ |
 | 2 | Panel, veritabanı şeması, iş kuyruğu, bulut işçisi iskeleti | ✅ |
 | 3 | Araştırma ve senaryo motoru | ✅ (gerçek LLM ile henüz çalıştırılmadı) |
-| 4 | Senaryo onayı, ElevenLabs metinleri, ses yükleme (R2) ve analiz (faster-whisper) | ✅ (gerçek R2 ile henüz denenmedi) |
+| 4 | Senaryo onayı, ElevenLabs metinleri, ses yükleme (R2) ve analiz (faster-whisper) | ✅ (Pompei ile gerçek veride doğrulandı) |
 | 5 | Görsel arşiv ve sahne yönetimi | ⏳ |
 | 6 | Bulut video montaj motoru (FFmpeg) | ⏳ |
 | 7 | Shorts motoru | ⏳ |
