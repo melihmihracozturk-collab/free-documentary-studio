@@ -9,6 +9,15 @@ const { DATABASE_URL, SLUG, GITHUB_STEP_SUMMARY } = process.env;
 const sql = postgres(DATABASE_URL, { prepare: false, max: 1, onnotice: () => {} });
 const out = [];
 try {
+  if (SLUG === "*") {
+    const ps = await sql`select p.slug, p.title, p.status, p.created_at,
+                                (select string_agg(s.step_key || ':' || s.status, ' ' order by s.seq) from job_steps s
+                                  where s.job_id = (select id from jobs where project_id = p.id order by created_at desc limit 1)
+                                    and s.status not in ('done','pending')) aktif
+                           from projects p order by p.created_at desc`;
+    out.push("# Projeler", "", ...ps.map((x) => `- **${x.slug}** · ${x.title} · ${x.status} · ${x.created_at.toISOString()} · ${x.aktif ?? ""}`));
+    throw Object.assign(new Error("liste"), { list: true });
+  }
   const [p] = await sql`select * from projects where slug = ${SLUG}`;
   if (!p) throw new Error(`Proje yok: ${SLUG}`);
   out.push(`# ${p.title}`, "", `Durum: **${p.status}**`, "", "## Üretim hattı", "", "| # | Adım | Durum | Deneme | Çıktı / hata |", "|---|---|---|---|---|");
@@ -59,6 +68,7 @@ try {
     for (const s of scenes) out.push(`**${s.idx}. ${s.act ?? ""}** — ${s.voiceover_text}`, `> Görsel: ${s.visual_description} · ${s.camera_move}/${s.transition} · ${s.claim_refs.join(" ")}`, "");
   }
 } catch (e) {
+  if (e.list) { /* yalnızca liste istendi */ } else
   out.push(`Hata: ${e.code ?? ""} ${String(e.message ?? e).replace(/postgres(ql)?:\/\/\S+/g, "***").slice(0, 300)}`);
   process.exitCode = 1;
 } finally {

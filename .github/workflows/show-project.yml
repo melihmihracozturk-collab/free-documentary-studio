@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       slug:
-        description: "Proje kısa adı (ör. pompeinin-son-gunu)"
+        description: "Proje kısa adı (ör. pompeinin-son-gunu) — tüm projeler için *"
         required: true
 
 permissions:
