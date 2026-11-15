@@ -208,3 +208,13 @@ def test_render_shorts_with_tempo(conn, s3, tmp_path):  # noqa: F811
     assert out["duration_sec"] == pytest.approx(3.0, abs=0.15)
     r = conn.execute("select * from renders where project_id=%s and kind='shorts'", (pid,)).fetchone()
     assert (r["width"], r["height"], float(r["fps"])) == (1080, 1920, 30.0)
+
+
+def test_shorts_lines_fit_narrow_screen():
+    t = "Kurbanların ölümündeki asıl etken boğulma değil en az iki yüz elli dereceye varan kavurucu sıcaklıktı."
+    words, end = words_for([t])
+    cues = R.build_cues([t], words, [(0.0, end)], R.SHORTS.max_line, R.SHORTS.max_lines)
+    for c in cues:
+        lines = c[2].split("\n")
+        assert len(lines) <= 3
+        assert all(len(x) <= R.SHORTS.max_line + 8 for x in lines), c   # 1080 px'e sığar (tek uzun kelime payı)

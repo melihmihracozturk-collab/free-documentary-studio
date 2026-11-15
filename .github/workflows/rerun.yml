@@ -12,7 +12,7 @@ on:
         required: true
         default: research_collect
         type: choice
-        options: [research_collect, research_verify, research_report, script_doc, script_shorts, visual_plan, asset_match, subtitles, render_doc]
+        options: [research_collect, research_verify, research_report, script_doc, script_shorts, visual_plan, asset_match, subtitles, render_doc, render_shorts]
 
 permissions:
   contents: read

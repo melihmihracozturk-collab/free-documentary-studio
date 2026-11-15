@@ -37,10 +37,12 @@ class Format:
     font_size: int
     margin_v: int
     max_line: int
+    max_lines: int = 2
 
 
-DOC = Format("doc", 1920, 1080, 25, 52, 70, 42)
-SHORTS = Format("shorts", 1080, 1920, 30, 64, 420, 24)
+DOC = Format("doc", 1920, 1080, 25, 52, 70, 42, 2)
+# Dikey ekran dar: satır başına en fazla 24 karakter, 3 satıra kadar (satır birleştirme taşmaya yol açıyordu)
+SHORTS = Format("shorts", 1080, 1920, 30, 60, 420, 24, 3)
 
 TRANSITIONS = {"crossfade": ("fade", 0.8), "fade_black": ("fadeblack", 1.0), "dip_white": ("fadewhite", 0.8),
                "wipe": ("wipeleft", 0.7), "slide": ("slideleft", 0.7), "cut": ("fade", 0.12)}
@@ -88,7 +90,7 @@ def word_times(scene_texts: list[str], words: list[tuple[str, float, float]], bo
     return script, out
 
 
-def build_cues(scene_texts, words, bounds, max_line: int = 42) -> list[Cue]:
+def build_cues(scene_texts, words, bounds, max_line: int = 42, max_lines: int = 2) -> list[Cue]:
     script, times = word_times(scene_texts, words, bounds)
     cues: list[Cue] = []
     cur: list[int] = []
@@ -105,8 +107,8 @@ def build_cues(scene_texts, words, bounds, max_line: int = 42) -> list[Cue]:
             else:
                 line = f"{line} {w}".strip()
         lines.append(line)
-        if len(lines) > 2:
-            lines = [lines[0], " ".join(lines[1:])]
+        if len(lines) > max_lines:
+            lines = lines[:max_lines - 1] + [" ".join(lines[max_lines - 1:])]
         cues.append((times[cur[0]][0], times[cur[-1]][1], "\n".join(lines)))
         cur.clear()
 
@@ -129,7 +131,7 @@ def build_cues(scene_texts, words, bounds, max_line: int = 42) -> list[Cue]:
         rest = words_to_sentence_end(k)
         if re.search(r"[.!?…]$", w):
             flush()
-        elif length > max_line * 2 - 8 and not (1 <= rest <= 2 and length < max_line * 2 + 6):
+        elif length > max_line * max_lines - 8 and not (1 <= rest <= 2 and length < max_line * max_lines + 6):
             flush()                                         # uzun: böl — ama cümlenin son 1-2 kelimesini yalnız bırakma
         elif re.search(r"[,;:]$", w) and length > max_line and rest > 2:
             flush()
@@ -196,22 +198,23 @@ def _load_words(v) -> list[tuple[str, float, float]]:
     return [(x["w"], x["s"], x["e"]) for x in data]
 
 
+def build_subtitles(conn, p, fmt: Format) -> dict:
+    v = conn.execute("select * from voiceovers where project_id=%s and kind=%s and status='analyzed'", (p["id"], fmt.kind)).fetchone()
+    if not v or not v["words_key"]:
+        raise RuntimeError(f"{fmt.kind} seslendirmesi analiz edilmemiş")
+    scenes = conn.execute("select * from scenes where project_id=%s and kind=%s order by idx", (p["id"], fmt.kind)).fetchall()
+    bounds = [(float(s["start_sec"]), float(s["end_sec"])) for s in scenes]
+    cues = build_cues([s["voiceover_text"] for s in scenes], _load_words(v), bounds, fmt.max_line, fmt.max_lines)
+    srt_key = storage.project_key(p["slug"], "subtitles", f"{fmt.kind}.srt")
+    ass_key = storage.project_key(p["slug"], "subtitles", f"{fmt.kind}.ass")
+    storage.upload_bytes(srt_key, to_srt(cues).encode(), "application/x-subrip; charset=utf-8")
+    storage.upload_bytes(ass_key, to_ass(cues, fmt, captions_for(scenes, bounds)).encode(), "text/plain; charset=utf-8")
+    return {"cues": len(cues), "srt_key": srt_key, "ass_key": ass_key}
+
+
 def subtitles(conn, step) -> StepResult:
     p = conn.execute("select * from projects where id=%s", (step["project_id"],)).fetchone()
-    out = {}
-    for fmt in (DOC, SHORTS):
-        v = conn.execute("select * from voiceovers where project_id=%s and kind=%s and status='analyzed'", (p["id"], fmt.kind)).fetchone()
-        if not v or not v["words_key"]:
-            raise RuntimeError(f"{fmt.kind} seslendirmesi analiz edilmemiş")
-        scenes = conn.execute("select * from scenes where project_id=%s and kind=%s order by idx", (p["id"], fmt.kind)).fetchall()
-        bounds = [(float(s["start_sec"]), float(s["end_sec"])) for s in scenes]
-        cues = build_cues([s["voiceover_text"] for s in scenes], _load_words(v), bounds, fmt.max_line)
-        srt_key = storage.project_key(p["slug"], "subtitles", f"{fmt.kind}.srt")
-        ass_key = storage.project_key(p["slug"], "subtitles", f"{fmt.kind}.ass")
-        storage.upload_bytes(srt_key, to_srt(cues).encode(), "application/x-subrip; charset=utf-8")
-        storage.upload_bytes(ass_key, to_ass(cues, fmt, captions_for(scenes, bounds)).encode(), "text/plain; charset=utf-8")
-        out[fmt.kind] = {"cues": len(cues), "srt_key": srt_key, "ass_key": ass_key}
-    return StepResult(output=out)
+    return StepResult(output={fmt.kind: build_subtitles(conn, p, fmt) for fmt in (DOC, SHORTS)})
 
 
 # ----------------------------------------------------------------- görüntü hareketi
@@ -471,6 +474,9 @@ def render_shorts(conn, step) -> StepResult:
         raise RuntimeError("Analiz edilmiş Shorts seslendirmesi yok")
     tempo, warn = shorts_tempo(float(v["duration_sec"]), float(st.get("shorts_max_seconds", 60)),
                                float(st.get("shorts_auto_tempo_max", 1.15)))
+    p = conn.execute("select * from projects where id=%s", (step["project_id"],)).fetchone()
+    if conn.execute("select 1 from voiceovers where project_id=%s and kind='shorts' and words_key is not null", (p["id"],)).fetchone():
+        build_subtitles(conn, p, SHORTS)                  # ucuz; altyazı kuralları değiştiyse Shorts kendi başına güncellenir
     res = render_video(conn, step, SHORTS, "shorts.mp4", tempo=tempo)
     if warn:
         conn.execute("insert into error_logs (project_id, job_id, step_key, level, message) values (%s,%s,%s,'warning',%s)",
