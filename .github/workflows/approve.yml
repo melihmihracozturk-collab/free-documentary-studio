@@ -1,0 +1,40 @@
+# Kullanıcı onayı (ör. araştırma onayı) ve işçiyi başlatma. Actions → approve → Run workflow.
+name: approve
+
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Proje kısa adı"
+        required: true
+      step:
+        description: "Onaylanacak adım"
+        required: true
+        default: research_review
+        type: choice
+        options: [research_review]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  approve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/approve.mjs
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SLUG: ${{ inputs.slug }}
+          STEP: ${{ inputs.step }}
+      - name: İşçiyi başlat
+        run: gh workflow run worker.yml --ref main -f reason=onay
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
