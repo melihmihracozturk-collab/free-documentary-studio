@@ -51,6 +51,10 @@ export async function RenderView({ projectId, slug, kind }: { projectId: string;
           <a href={`/api/projects/${slug}/credits`} className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-200 ring-1 ring-inset ring-white/10 hover:bg-white/5">
             <Download size={15} /> Görsel kaynakları (credits.txt)
           </a>
+          <a href={`/api/projects/${slug}/deliverable/${kind === "doc" ? "youtube_description.txt" : "shorts_description.txt"}`}
+             className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-200 ring-1 ring-inset ring-white/10 hover:bg-white/5">
+            <Download size={15} /> YouTube açıklaması
+          </a>
         </div>
         <p className="mt-3 text-xs text-zinc-500">
           Altyazılar videoya gömülüdür; SRT dosyasını YouTube&apos;a ayrıca yükleyebilirsiniz. credits.txt içeriğini video açıklamasına ekleyin (CC BY görseller için zorunlu).

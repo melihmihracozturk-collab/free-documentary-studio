@@ -5,7 +5,13 @@ import { StorageMeter } from "@/components/StorageMeter";
 import { timeAgo } from "@/lib/format";
 
 export default async function Dashboard() {
-  const { counts, errors, active, storage } = await getDashboard();
+  const { counts, errors, active, usage, storage } = await getDashboard();
+  const llmTotal = usage.reduce((n, u) => n + u.n, 0);
+  const byTask = new Map<string, number>();
+  usage.forEach((u) => {
+    const task = u.metric.split(":")[2]?.replace(/_repair$/, "").replace(/^script_act_.*/, "script_doc") ?? u.metric;
+    byTask.set(task, (byTask.get(task) ?? 0) + u.n);
+  });
   return (
     <>
       <PageHeader title="Dashboard" description="Projelerin, bekleyen işlerin ve ücretsiz kotaların genel durumu.">
@@ -44,9 +50,18 @@ export default async function Dashboard() {
           )}
         </Card>
 
-        <Card title="Depolama (Cloudflare R2)">
-          <StorageMeter {...storage} />
-        </Card>
+        <div className="space-y-6">
+          <Card title="Depolama (Cloudflare R2)">
+            <StorageMeter {...storage} />
+          </Card>
+          <Card title="Bugünkü yapay zekâ kullanımı">
+            <div className="text-2xl font-semibold tabular-nums text-zinc-50">{llmTotal} <span className="text-sm font-normal text-zinc-500">istek</span></div>
+            <ul className="mt-2 space-y-0.5 text-xs text-zinc-400">
+              {[...byTask.entries()].slice(0, 6).map(([k, n]) => <li key={k} className="flex justify-between"><span>{k}</span><span className="tabular-nums">{n}</span></li>)}
+            </ul>
+            <p className="mt-2 text-xs text-zinc-500">Gemini ücretsiz katmanı; kota dolarsa adımlar beklemeye alınır, ücret çıkmaz. Bir belgesel ≈ 25–35 istek.</p>
+          </Card>
+        </div>
       </div>
 
       <Card title="Hata kayıtları" className="mt-6">

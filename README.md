@@ -16,7 +16,7 @@ Mimari ve servis seçimleri: [`docs/STAGE1_MIMARI_RAPORU.md`](docs/STAGE1_MIMARI
 | 5 | Görsel arşiv ve sahne yönetimi (Commons, Met, Openverse, Smithsonian; lisans filtresi; credits.txt) | ✅ |
 | 6 | Bulut video montaj motoru: altyazı, Ken Burns, geçişler, ambiyans, ses seviyesi (FFmpeg) | ✅ |
 | 7 | Shorts motoru | ⏳ |
-| 8 | Entegrasyon, test, optimizasyon | ⏳ |
+| 8 | Teslim paketi (YouTube açıklaması, bölümler, kaynaklar), Dashboard kullanımı, iyileştirmeler | ✅ |
 
 ## Yapı
 

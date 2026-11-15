@@ -21,7 +21,7 @@ Handler = Callable[[Any, dict], StepResult]
 
 def real_handlers() -> dict[str, Handler]:
     """Gerçek işleyiciler. LLM gerektirenler yalnızca bir LLM anahtarı tanımlıysa kaydedilir."""
-    from . import llm, render, research, script, storage, visuals, voiceover
+    from . import deliver, llm, render, research, script, storage, visuals, voiceover
 
     out: dict[str, Handler] = {"voiceover_texts": voiceover.texts, "visual_plan": visuals.plan, "asset_match": visuals.match}
     if storage.configured():
@@ -29,6 +29,7 @@ def real_handlers() -> dict[str, Handler]:
         out["subtitles"] = render.subtitles
         out["render_doc"] = render.render_doc
         out["render_shorts"] = render.render_shorts
+        out["preview_ready"] = deliver.ready
     if llm.configured():
         out.update({
             "research_collect": research.collect,

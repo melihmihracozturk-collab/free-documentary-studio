@@ -128,7 +128,9 @@ export async function getDashboard() {
          order by j.created_at desc, s.seq limit 1) c on true
      where p.status in ('active','waiting_input','rendering')
      order by p.updated_at desc limit 6`;
-  return { counts, errors, active, storage: await getStorageUsage() };
+  const usage = await sql<{ metric: string; n: number }[]>`
+    select metric, sum(value)::int n from usage_metrics where period = current_date and metric like 'llm:%' group by metric order by n desc`;
+  return { counts, errors, active, usage, storage: await getStorageUsage() };
 }
 
 export async function getRenderQueue() {
