@@ -14,7 +14,7 @@ Mimari ve servis seçimleri: [`docs/STAGE1_MIMARI_RAPORU.md`](docs/STAGE1_MIMARI
 | 3 | Araştırma ve senaryo motoru | ✅ (gerçek LLM ile henüz çalıştırılmadı) |
 | 4 | Senaryo onayı, ElevenLabs metinleri, ses yükleme (R2) ve analiz (faster-whisper) | ✅ (Pompei ile gerçek veride doğrulandı) |
 | 5 | Görsel arşiv ve sahne yönetimi (Commons, Met, Openverse, Smithsonian; lisans filtresi; credits.txt) | ✅ |
-| 6 | Bulut video montaj motoru (FFmpeg) | ⏳ |
+| 6 | Bulut video montaj motoru: altyazı, Ken Burns, geçişler, ambiyans, ses seviyesi (FFmpeg) | ✅ |
 | 7 | Shorts motoru | ⏳ |
 | 8 | Entegrasyon, test, optimizasyon | ⏳ |
 
@@ -66,6 +66,15 @@ LLM yanıtları veritabanında önbelleğe alınır; bir adımı yeniden çalı�
 4. **Puanlama:** konuyla ilgi, çözünürlük (Shorts için dikey kırpmaya uygunluk), kaynak ve lisans tercihi; aynı görsel bir videoda iki kez kullanılmaz.
 5. **Panel:** her sahnede seçili görsel + alternatifler; değiştirilebilir; `credits.txt` indirilebilir; kullanıcı onayı.
 6. Seçilen görseller en fazla 2560 px JPEG olarak R2'ye indirilir; SHA-256 kaydedilir.
+
+## Render (Stage 6)
+
+- **Altyazı:** whisper kelime zamanları ile senaryonun doğru yazımı hizalanır → SRT (indirilebilir) + ASS (videoya gömülü); ekran yazıları sol üstte.
+- **Sahne klipleri:** her görsel kendi sahnesinin gerçek ses süresi boyunca Ken Burns hareketiyle (zoompan, 3x iç çözünürlük → titreme yok). Klipler R2'de saklanır; render kesilirse yalnızca eksikler üretilir.
+- **Birleştirme:** geçişler sahne sınırının ortasına yerleşir; renk düzenleme, vinyet, film greni.
+- **Ses:** seslendirme + FFmpeg ile üretilen telifsiz ambiyans (konuşmada otomatik kısılır), -14 LUFS.
+- **Çıktı:** 1920x1080, 25 fps, H.264/AAC MP4; süre ve boyut kontrol edilir, SHA-256 kaydedilir.
+- Not: "parallax" bu sürümde yavaş yakınlaşma + kaydırmadır (gerçek derinlik ayrıştırması yok).
 
 ## Kurulum (tamamı tarayıcıdan)
 

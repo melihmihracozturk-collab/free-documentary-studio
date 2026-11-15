@@ -1,4 +1,5 @@
 import { ModulePage, type ModuleConfig } from "@/components/ModulePage";
+import { RenderView } from "@/components/RenderView";
 
 const config: ModuleConfig = {
   "title": "Shorts",
@@ -17,5 +18,8 @@ const config: ModuleConfig = {
 
 export default async function Page({ searchParams }: PageProps<"/shorts">) {
   const { p } = await searchParams;
-  return <ModulePage config={config} selected={typeof p === "string" ? p : undefined} />;
+  return (
+    <ModulePage config={config} selected={typeof p === "string" ? p : undefined}
+                render={async (proj) => <RenderView projectId={proj.id} slug={proj.slug} kind="shorts" />} />
+  );
 }

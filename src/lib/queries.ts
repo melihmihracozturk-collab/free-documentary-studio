@@ -262,3 +262,13 @@ export async function getVisuals(projectId: string) {
       from assets where project_id = ${projectId} and scene_id is not null order by score desc nulls last`;
   return { scenes, assets };
 }
+
+export type Render = {
+  id: string; kind: "doc" | "shorts"; width: number; height: number; fps: string; duration_sec: string; bytes: string;
+  sha256: string | null; status: string; created_at: Date;
+};
+
+export async function getRenders(projectId: string) {
+  return db()<Render[]>`select id, kind, width, height, fps, duration_sec, bytes, sha256, status, created_at
+                        from renders where project_id = ${projectId} and status = 'done' order by created_at desc`;
+}

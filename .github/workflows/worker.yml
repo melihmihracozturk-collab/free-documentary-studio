@@ -32,7 +32,7 @@ jobs:
           cache: pip
           cache-dependency-path: worker/requirements.txt
       - name: ffmpeg
-        run: command -v ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
       - name: Bağımlılıklar
         run: pip install -r worker/requirements.txt -r worker/requirements-audio.txt
       - name: Whisper modeli önbelleği

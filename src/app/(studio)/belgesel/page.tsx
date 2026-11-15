@@ -1,9 +1,11 @@
 import { ModulePage, type ModuleConfig } from "@/components/ModulePage";
+import { RenderView } from "@/components/RenderView";
 
 const config: ModuleConfig = {
   "title": "Ana Belgesel",
   "description": "1920×1080, 25 fps, H.264 MP4. Önizleme ve indirme.",
   "stage": 6,
+  "active": true,
   "steps": [
     "subtitles",
     "render_doc",
@@ -20,5 +22,8 @@ const config: ModuleConfig = {
 
 export default async function Page({ searchParams }: PageProps<"/belgesel">) {
   const { p } = await searchParams;
-  return <ModulePage config={config} selected={typeof p === "string" ? p : undefined} />;
+  return (
+    <ModulePage config={config} selected={typeof p === "string" ? p : undefined}
+                render={async (proj) => <RenderView projectId={proj.id} slug={proj.slug} kind="doc" />} />
+  );
 }
