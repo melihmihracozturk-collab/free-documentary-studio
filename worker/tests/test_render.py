@@ -151,3 +151,12 @@ def test_subtitles_and_render_doc_end_to_end(conn, s3, tmp_path):  # noqa: F811
         RR.assemble = orig
     out2 = R.render_doc(conn, steps(conn, job)["render_doc"])
     assert out2.output["clips_reused"] == 3 and out2.output["clips_rendered"] == 0
+
+
+def test_no_orphan_last_word():
+    # Pompei render'ında görülen gerçek durum: 76 karakterlik bölme sınırı son kelimede aşılıyordu → "ediyor." tek başına
+    t = "Günümüzde bilim insanları bu eşsiz kalıntıları modern yöntemlerle incelemeye devam ediyor."
+    words, end = words_for([t])
+    cues = R.build_cues([t], words, [(0.0, end)], 42)
+    assert all(len(c[2].split()) >= 3 for c in cues), cues           # tek başına "ediyor." kalmaz
+    assert all(len(c[2].split("\n")) <= 2 for c in cues)

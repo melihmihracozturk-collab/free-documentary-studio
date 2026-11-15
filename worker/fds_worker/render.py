@@ -105,15 +105,33 @@ def build_cues(scene_texts, words, bounds, max_line: int = 42) -> list[Cue]:
             else:
                 line = f"{line} {w}".strip()
         lines.append(line)
+        if len(lines) > 2:
+            lines = [lines[0], " ".join(lines[1:])]
         cues.append((times[cur[0]][0], times[cur[-1]][1], "\n".join(lines)))
         cur.clear()
+
+    def words_to_sentence_end(k: int) -> int:
+        """k'dan sonra cümle (veya sahne) bitene kadar kaç kelime var."""
+        n = 0
+        for j in range(k + 1, len(script)):
+            if script[j][1] != script[k][1]:
+                break
+            n += 1
+            if re.search(r"[.!?…]$", script[j][0]):
+                break
+        return n
 
     for k, (w, si) in enumerate(script):
         if cur and script[cur[-1]][1] != si:
             flush()                                         # sahne değişince yeni altyazı
         cur.append(k)
         length = len(" ".join(script[x][0] for x in cur))
-        if re.search(r"[.!?…]$", w) or length > max_line * 2 - 8 or (re.search(r"[,;:]$", w) and length > max_line):
+        rest = words_to_sentence_end(k)
+        if re.search(r"[.!?…]$", w):
+            flush()
+        elif length > max_line * 2 - 8 and not (1 <= rest <= 2 and length < max_line * 2 + 6):
+            flush()                                         # uzun: böl — ama cümlenin son 1-2 kelimesini yalnız bırakma
+        elif re.search(r"[,;:]$", w) and length > max_line and rest > 2:
             flush()
     flush()
     # Çakışma yok, en az 0.8 sn görünür, sonrakinden hemen önce biter
