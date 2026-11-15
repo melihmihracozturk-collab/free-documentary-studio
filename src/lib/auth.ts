@@ -15,12 +15,12 @@ async function hmac(secret: string, data: string) {
 }
 
 function secret() {
-  return process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD || "";
+  return (process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD || "").trim();
 }
 
 /** Şifre tanımlı değilse ve üretim ortamı değilse giriş devre dışıdır (yalnızca yerel geliştirme). */
 export function authDisabled() {
-  return !process.env.ADMIN_PASSWORD && process.env.NODE_ENV !== "production";
+  return !(process.env.ADMIN_PASSWORD ?? "").trim() && process.env.NODE_ENV !== "production";
 }
 
 export async function createSessionToken() {
@@ -43,7 +43,7 @@ export async function verifySessionToken(token: string | undefined) {
 }
 
 export function checkPassword(input: string) {
-  const pw = process.env.ADMIN_PASSWORD ?? "";
+  const pw = (process.env.ADMIN_PASSWORD ?? "").trim();
   if (!pw || input.length !== pw.length) return false;
   let diff = 0;
   for (let i = 0; i < pw.length; i++) diff |= pw.charCodeAt(i) ^ input.charCodeAt(i);

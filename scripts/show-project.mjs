@@ -3,6 +3,8 @@
 import fs from "node:fs";
 import postgres from "postgres";
 
+if (process.env.DATABASE_URL) process.env.DATABASE_URL = process.env.DATABASE_URL.trim();
+
 const { DATABASE_URL, SLUG, GITHUB_STEP_SUMMARY } = process.env;
 const sql = postgres(DATABASE_URL, { prepare: false, max: 1, onnotice: () => {} });
 const out = [];

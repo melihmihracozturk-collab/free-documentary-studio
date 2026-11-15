@@ -1,17 +1,20 @@
 // Ortam değişkenleri. Gizli değerler yalnızca sunucuda okunur; arayüze sadece "tanımlı mı" bilgisi gider.
+// Kopyala-yapıştırda sık eklenen baştaki/sondaki boşluk ve satır sonları temizlenir.
+const v = (k: string) => (process.env[k] ?? "").trim();
+
 export const env = {
-  databaseUrl: process.env.DATABASE_URL ?? "",
-  adminPassword: process.env.ADMIN_PASSWORD ?? "",
-  sessionSecret: process.env.SESSION_SECRET ?? "",
-  githubToken: process.env.GITHUB_DISPATCH_TOKEN ?? "",
-  githubRepo: process.env.GITHUB_REPO ?? "", // "kullanici/repo"
-  githubWorkflow: process.env.GITHUB_WORKFLOW_FILE ?? "worker.yml",
+  databaseUrl: v("DATABASE_URL"),
+  adminPassword: v("ADMIN_PASSWORD"),
+  sessionSecret: v("SESSION_SECRET"),
+  githubToken: v("GITHUB_DISPATCH_TOKEN"),
+  githubRepo: v("GITHUB_REPO"), // "kullanici/repo"
+  githubWorkflow: v("GITHUB_WORKFLOW_FILE") || "worker.yml",
   isProd: process.env.NODE_ENV === "production",
 };
 
 /** Ayarlar sayfasında gösterilen servis yapılandırma durumu (değerler asla gösterilmez). */
 export function serviceStatus() {
-  const has = (k: string) => Boolean(process.env[k]);
+  const has = (k: string) => Boolean(v(k));
   return [
     { key: "DATABASE_URL", label: "Supabase Postgres bağlantısı", ok: has("DATABASE_URL"), stage: 2 },
     { key: "ADMIN_PASSWORD", label: "Panel şifresi", ok: has("ADMIN_PASSWORD"), stage: 2 },

@@ -2,6 +2,8 @@
 // Kullanım: DATABASE_URL=... TOPIC="..." MINUTES=11 LANGUAGE=tr STYLE="..." node scripts/create-project.mjs
 import postgres from "postgres";
 
+if (process.env.DATABASE_URL) process.env.DATABASE_URL = process.env.DATABASE_URL.trim();
+
 const TR = { ç: "c", ğ: "g", ı: "i", İ: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u" };
 function slugify(input, max = 48) {
   const s = [...input].map((c) => TR[c] ?? TR[c.toLowerCase()] ?? c).join("")

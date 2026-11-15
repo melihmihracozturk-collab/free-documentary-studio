@@ -124,7 +124,7 @@ def main() -> None:
     ap.add_argument("--dry-run", action="store_true", help="Yalnızca test: sahte işleyiciler")
     ap.add_argument("--once", action="store_true", help="Tek adım işle ve çık")
     args = ap.parse_args()
-    url = os.environ.get("DATABASE_URL")
+    url = (os.environ.get("DATABASE_URL") or "").strip()
     if not url:
         sys.exit("DATABASE_URL tanımlı değil")
     problem = _safe_url_problem(url)

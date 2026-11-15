@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import postgres from "postgres";
 
+if (process.env.DATABASE_URL) process.env.DATABASE_URL = process.env.DATABASE_URL.trim();
+
 const url = process.env.DATABASE_URL;
 if (!url) {
   console.error("DATABASE_URL tanımlı değil");

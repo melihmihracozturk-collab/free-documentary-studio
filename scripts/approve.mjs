@@ -1,6 +1,8 @@
 // Kullanıcı onayı gerektiren adımı onaylar (panel yayında değilken). Kullanım: SLUG=... STEP=research_review
 import postgres from "postgres";
 
+if (process.env.DATABASE_URL) process.env.DATABASE_URL = process.env.DATABASE_URL.trim();
+
 const { DATABASE_URL, SLUG, STEP = "research_review" } = process.env;
 const sql = postgres(DATABASE_URL, { prepare: false, max: 1, onnotice: () => {} });
 try {

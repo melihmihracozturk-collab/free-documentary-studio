@@ -10,6 +10,12 @@ import os
 from pathlib import Path
 
 
+# Kopyala-yapıştırda eklenen boşluk/satır sonlarını temizle
+for _k in ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "R2_ENDPOINT", "R2_REGION"):
+    if _k in os.environ:
+        os.environ[_k] = os.environ[_k].strip()
+
+
 def configured() -> bool:
     return all(os.environ.get(k) for k in ("R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET")) and bool(
         os.environ.get("R2_ACCOUNT_ID") or os.environ.get("R2_ENDPOINT"))

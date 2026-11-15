@@ -15,7 +15,7 @@ TEST_ORIGIN = "https://ornek-panel.vercel.app"
 
 def _db():
     import psycopg
-    with psycopg.connect(os.environ["DATABASE_URL"], prepare_threshold=None) as c:
+    with psycopg.connect(os.environ["DATABASE_URL"].strip(), prepare_threshold=None) as c:
         n = c.execute("select count(*) from projects").fetchone()[0]
     return f"bağlandı ({n} proje)"
 

@@ -4,23 +4,25 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // Cloudflare R2 (S3 uyumlu). Tarayıcı dosyayı imzalı URL ile DOĞRUDAN R2'ye yükler (Vercel'in 4,5 MB gövde sınırına takılmaz).
 export function r2Configured() {
-  return Boolean(process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && process.env.R2_BUCKET &&
-    (process.env.R2_ACCOUNT_ID || process.env.R2_ENDPOINT));
+  return Boolean(e("R2_ACCESS_KEY_ID") && e("R2_SECRET_ACCESS_KEY") && e("R2_BUCKET") &&
+    (e("R2_ACCOUNT_ID") || e("R2_ENDPOINT")));
 }
+
+const e = (k: string) => (process.env[k] ?? "").trim();
 
 let client: S3Client | null = null;
 function s3() {
   if (!client) {
     client = new S3Client({
-      region: process.env.R2_REGION ?? "auto",
-      endpoint: process.env.R2_ENDPOINT ?? `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-      forcePathStyle: Boolean(process.env.R2_ENDPOINT),
-      credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID!, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY! },
+      region: e("R2_REGION") || "auto",
+      endpoint: e("R2_ENDPOINT") || `https://${e("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`,
+      forcePathStyle: Boolean(e("R2_ENDPOINT")),
+      credentials: { accessKeyId: e("R2_ACCESS_KEY_ID"), secretAccessKey: e("R2_SECRET_ACCESS_KEY") },
     });
   }
   return client;
 }
-const bucket = () => process.env.R2_BUCKET!;
+const bucket = () => e("R2_BUCKET");
 
 export const projectKey = (slug: string, ...parts: string[]) => ["projects", slug, ...parts].join("/");
 

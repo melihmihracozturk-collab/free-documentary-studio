@@ -2,6 +2,8 @@
 // Kullanım: DATABASE_URL=... SLUG=... FROM_STEP=research_collect node scripts/rerun.mjs
 import postgres from "postgres";
 
+if (process.env.DATABASE_URL) process.env.DATABASE_URL = process.env.DATABASE_URL.trim();
+
 const { DATABASE_URL, SLUG, FROM_STEP } = process.env;
 const sql = postgres(DATABASE_URL, { prepare: false, max: 1, onnotice: () => {} });
 try {

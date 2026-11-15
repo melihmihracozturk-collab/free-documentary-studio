@@ -5,7 +5,6 @@ import { env } from "@/lib/env";
 // Herkese açık sağlık kontrolü. Bağlantı adresi veya şifre ASLA yazdırılmaz; yalnızca hata türü bildirilir.
 function urlProblem(u: string): string | null {
   if (!u) return "DATABASE_URL tanımlı değil (Vercel → Settings → Environment Variables)";
-  if (/^\s|\s$/.test(u)) return "DATABASE_URL başında/sonunda boşluk var";
   if (u.includes("[") || u.includes("]")) return "DATABASE_URL içinde köşeli parantez var ([YOUR-PASSWORD] değiştirilmemiş)";
   if (!/^postgres(ql)?:\/\//.test(u)) return "DATABASE_URL 'postgresql://' ile başlamıyor";
   try {
