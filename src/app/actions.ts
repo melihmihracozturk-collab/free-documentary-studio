@@ -198,3 +198,53 @@ export async function unapproveScripts(slug: string): Promise<FormState> {
   revalidatePath("/senaryo");
   return { ok: "Onay geri alındı; senaryo yeniden düzenlenebilir" };
 }
+
+// ----------------------------------------------------------------- Stage 5: görsel seçimi ve onayı
+
+export async function selectAsset(slug: string, sceneId: string, assetId: string): Promise<FormState> {
+  const p = await projectBySlug(slug);
+  const sql = db();
+  const [st] = await sql<{ status: string }[]>`
+    select s.status from job_steps s join jobs j on j.id = s.job_id
+     where s.project_id = ${p.id} and s.step_key = 'visual_review' order by j.created_at desc limit 1`;
+  if (st && st.status === "done") return { error: "Görseller onaylandı; değiştirmek için onayı geri alın" };
+  const [a] = await sql<{ id: string }[]>`select id from assets where id = ${assetId} and scene_id = ${sceneId} and project_id = ${p.id}`;
+  if (!a) return { error: "Görsel bu sahneye ait değil" };
+  await sql.begin(async (tx) => {
+    await tx`update assets set status = 'candidate' where scene_id = ${sceneId} and status = 'approved'`;
+    await tx`update assets set status = 'approved' where id = ${assetId}`;
+    await tx`update scenes set asset_id = ${assetId} where id = ${sceneId}`;
+  });
+  revalidatePath("/gorseller");
+  return { ok: "Görsel değiştirildi" };
+}
+
+export async function approveVisuals(slug: string): Promise<FormState> {
+  const p = await projectBySlug(slug);
+  const sql = db();
+  const [m] = await sql<{ n: number }[]>`select count(*)::int n from scenes where project_id = ${p.id} and asset_id is null`;
+  if (m.n > 0) return { error: `${m.n} sahnede görsel yok; önce her sahneye görsel seçin` };
+  const [step] = await sql<{ id: string }[]>`
+    select s.id from job_steps s join jobs j on j.id = s.job_id
+     where s.project_id = ${p.id} and s.step_key = 'visual_review' and s.status = 'waiting_input'
+     order by j.created_at desc limit 1`;
+  if (!step) return { error: "Onay bekleyen görsel adımı yok" };
+  await sql`select resolve_input_step(${step.id}, ${sql.json({ approved_by: "user", at: new Date().toISOString() })})`;
+  await dispatchWorker(`görsel onayı: ${slug}`);
+  revalidatePath("/gorseller");
+  return { ok: "Görseller onaylandı" };
+}
+
+export async function unapproveVisuals(slug: string): Promise<FormState> {
+  const p = await projectBySlug(slug);
+  const sql = db();
+  const [r] = await sql<{ job_id: string; render: string | null }[]>`
+    select s.job_id, (select status from job_steps x where x.job_id = s.job_id and x.step_key = 'render_doc') render
+      from job_steps s join jobs j on j.id = s.job_id
+     where s.project_id = ${p.id} and s.step_key = 'visual_review' and s.status = 'done' order by j.created_at desc limit 1`;
+  if (!r) return { error: "Onaylanmış görsel adımı yok" };
+  if (r.render === "running") return { error: "Render sürerken onay geri alınamaz" };
+  await sql`select reset_from_step(${r.job_id}, 'visual_review')`;
+  revalidatePath("/gorseller");
+  return { ok: "Görsel onayı geri alındı" };
+}

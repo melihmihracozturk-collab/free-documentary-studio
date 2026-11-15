@@ -168,9 +168,9 @@ def test_no_llm_key_no_handlers(monkeypatch):
         monkeypatch.delenv(k, raising=False)
     for k in ("R2_ACCOUNT_ID", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"):
         monkeypatch.delenv(k, raising=False)
-    assert set(H.registry(False)) == {"voiceover_texts"}           # LLM/R2 gerektirmeyen tek adım
+    assert set(H.registry(False)) == {"voiceover_texts", "visual_plan", "asset_match"}   # LLM/R2 gerektirmeyenler
     monkeypatch.setenv("GEMINI_API_KEY", "x")
-    assert set(H.registry(False)) == {"voiceover_texts", "research_collect", "research_verify", "research_report",
+    assert set(H.registry(False)) == {"voiceover_texts", "visual_plan", "asset_match", "research_collect", "research_verify", "research_report",
                                       "script_doc", "script_shorts"}
 
 

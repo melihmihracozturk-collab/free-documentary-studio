@@ -13,7 +13,7 @@ Mimari ve servis seçimleri: [`docs/STAGE1_MIMARI_RAPORU.md`](docs/STAGE1_MIMARI
 | 2 | Panel, veritabanı şeması, iş kuyruğu, bulut işçisi iskeleti | ✅ |
 | 3 | Araştırma ve senaryo motoru | ✅ (gerçek LLM ile henüz çalıştırılmadı) |
 | 4 | Senaryo onayı, ElevenLabs metinleri, ses yükleme (R2) ve analiz (faster-whisper) | ✅ (Pompei ile gerçek veride doğrulandı) |
-| 5 | Görsel arşiv ve sahne yönetimi | ⏳ |
+| 5 | Görsel arşiv ve sahne yönetimi (Commons, Met, Openverse, Smithsonian; lisans filtresi; credits.txt) | ✅ |
 | 6 | Bulut video montaj motoru (FFmpeg) | ⏳ |
 | 7 | Shorts motoru | ⏳ |
 | 8 | Entegrasyon, test, optimizasyon | ⏳ |
@@ -57,6 +57,15 @@ LLM yanıtları veritabanında önbelleğe alınır; bir adımı yeniden çalı�
 2. **ElevenLabs metinleri:** `documentary_voiceover.txt` ve `shorts_voiceover.txt` yalnızca okunacak cümlelerden oluşur, sahneler arasında boş satır vardır.
 3. **Yükleme:** Tarayıcı dosyanın SHA-256 özetini hesaplar, dosyayı imzalı URL ile doğrudan Cloudflare R2'ye yükler. Sunucu boyutu doğrular.
 4. **Analiz (bulut işçisi):** ffprobe ile süre, silencedetect ile duraklamalar, faster-whisper ile kelime zamanları ölçülür. Senaryo ile hizalanarak her sahnenin gerçek başlangıç ve bitiş zamanı çıkarılır. Ses ile metin %60'tan az eşleşirse ya da süre hedef dışındaysa uyarı verilir.
+
+## Görsel arşiv (Stage 5)
+
+1. **Görsel plan:** her sahnenin İngilizce arama ifadelerine konunun adı eklenir (LLM kullanılmaz).
+2. **Arama:** Met Museum Open Access (CC0), Wikimedia Commons, Smithsonian (anahtar varsa); yetersizse Openverse.
+3. **Lisans filtresi (kodla):** kamu malı, CC0, CC BY, CC BY-SA kabul; NC varsayılan kapalı; ND ve belirsiz lisans her zaman ret.
+4. **Puanlama:** konuyla ilgi, çözünürlük (Shorts için dikey kırpmaya uygunluk), kaynak ve lisans tercihi; aynı görsel bir videoda iki kez kullanılmaz.
+5. **Panel:** her sahnede seçili görsel + alternatifler; değiştirilebilir; `credits.txt` indirilebilir; kullanıcı onayı.
+6. Seçilen görseller en fazla 2560 px JPEG olarak R2'ye indirilir; SHA-256 kaydedilir.
 
 ## Kurulum (tamamı tarayıcıdan)
 
