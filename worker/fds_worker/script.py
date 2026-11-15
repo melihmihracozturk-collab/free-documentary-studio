@@ -1,8 +1,9 @@
 """Senaryo motoru (Stage 3): ana belgesel ve bağımsız Shorts senaryosu.
 
 Senaryo yalnızca doğrulanmış/tek kaynaklı iddialara dayanır; her olgusal sahne iddia kimliği (C#) taşır.
-Çıktı kodla doğrulanır (yapı, kelime bütçesi, alanlar, iddia kimlikleri). Hata varsa LLM'e
-hatalar listesiyle en fazla 2 kez düzeltme yaptırılır.
+Uzun metinde LLM'ler kısaltma eğilimindedir; bu yüzden belgesel önce TASLAK (bölüm, sahne sayısı,
+iddia dağılımı), sonra BÖLÜM BÖLÜM yazılır. Her bölüm kodla kontrol edilir (alanlar, kelime hedefi,
+iddia kimlikleri); kısa veya hatalı bölüm hatalar listesiyle yeniden yazdırılır (en fazla 2 kez).
 """
 from __future__ import annotations
 
@@ -118,23 +119,177 @@ def validate_shorts(data: dict, budget: int, claim_status: dict) -> list[str]:
     return errs
 
 
-def _generate(conn, prompt: str, validator, task: str) -> tuple[dict, list[str]]:
-    data = llm.complete_json(conn, SYSTEM, prompt, task=task, temperature=0.7)
+
+ACT_SHARE = {"giris": 0.08, "arka_plan": 0.17, "gelisme": 0.30, "donum_noktasi": 0.20, "sonuclar": 0.15, "kapanis": 0.10}
+SCENE_WORDS = 42          # sahne başına hedef kelime (~20 sn)
+
+STYLE = """NARRATION STYLE (very important):
+- Cinematic documentary storytelling, not an encyclopedia. In Turkish use the narrative past tense (-dı/-di, e.g. "Gökyüzü karardı.")
+  NOT the report style (-mıştır/-miştir, "meydana gelmiştir").
+- Short, vivid, spoken sentences (6-18 words). Vary rhythm. Occasional rhetorical question or pause line is welcome.
+- Atmosphere and emotion are allowed, but every FACT (date, number, name, place, cause, event) must come from the claims.
+- Attribution phrases like "kaynaklara göre", "anlatılana göre", "araştırmalara göre": at most 3 in the whole script,
+  only for debated or surprising single-source facts. Never start consecutive sentences with them.
+- Numbers as words when read aloud ("iki yüz elli derece"). No brackets, no stage directions, no claim ids in narration."""
+
+
+def _llm_json(conn, prompt: str, task: str, temperature: float = 0.7) -> dict:
+    return llm.complete_json(conn, SYSTEM, prompt, task=task, temperature=temperature)
+
+
+def _write_with_repair(conn, prompt: str, validator, task: str) -> tuple[dict, list[str]]:
+    data = _llm_json(conn, prompt, task)
     errs = validator(data)
-    for attempt in range(2):
+    for _ in range(2):
         if not errs:
             break
-        data = llm.complete_json(conn, SYSTEM, f"""{prompt}
+        data = _llm_json(conn, f"""{prompt}
 
-Your previous answer had these problems:
+Your previous answer had these problems — fix ALL of them (if too short, ADD scenes/sentences, do not just pad words):
 {chr(10).join('- ' + e for e in errs)}
 
 Previous answer:
 {json.dumps(data, ensure_ascii=False)[:30000]}
 
-Return the corrected complete JSON.""", task=f"{task}_repair", temperature=0.4)
+Return the corrected complete JSON.""", f"{task}_repair", 0.5)
         errs = validator(data)
     return data, errs
+
+
+def _validate_act(data: dict, n_scenes: int, words_target: int, claim_status: dict, act: str) -> list[str]:
+    scenes = data.get("scenes") or []
+    errs = []
+    if not scenes:
+        return [f"{act}: sahne yok"]
+    if not (n_scenes - 1 <= len(scenes) <= n_scenes + 2):
+        errs.append(f"{act}: {len(scenes)} sahne; yaklaşık {n_scenes} olmalı")
+    for i, sc in enumerate(scenes, 1):
+        errs += [f"{act} {e}" for e in _validate_scene(sc, i, claim_status)]
+    total = sum(words(sc.get("voiceover", "")) for sc in scenes)
+    lo, hi = int(words_target * (1 - TOLERANCE)), int(words_target * (1 + TOLERANCE))
+    if not lo <= total <= hi:
+        errs.append(f"{act}: {total} kelime; {lo}-{hi} arasında olmalı (hedef {words_target}). "
+                    f"{'Daha fazla sahne/cümle ekleyin.' if total < lo else 'Kısaltın.'}")
+    return errs
+
+
+def script_doc(conn, step) -> StepResult:
+    p = conn.execute("select * from projects where id=%s", (step["project_id"],)).fetchone()
+    wpm = _setting(conn, "narration_wpm", 125)
+    budget = int(float(p["target_minutes"]) * wpm)
+    claims, status = _claims_block(conn, p["id"])
+    if not claims:
+        raise RuntimeError("Senaryo için doğrulanmış iddia yok; araştırma adımları tamamlanmalı")
+    lang = LANG_NAME.get(p["language"], p["language"])
+    plan = {a: (round(budget * ACT_SHARE[a]), max(2, round(budget * ACT_SHARE[a] / SCENE_WORDS))) for a in ACTS}
+
+    # 1) Taslak
+    outline = _llm_json(conn, f"""
+Plan a {p['target_minutes']}-minute documentary in {lang}. Style: {p['style']}. Topic: {p['topic']}
+
+Acts (fixed order) with target scene counts:
+{chr(10).join(f"- {a} = {ACT_TR[a]}: {plan[a][1]} scenes" for a in ACTS)}
+
+- giris: a gripping cold open — start in the middle of the most dramatic moment, a paradox or a question. Not a date.
+- donum_noktasi: the critical turning point. kapanis: a resonant ending connecting to today.
+- Distribute the claims so that every important claim is used once, in a logical order. Do not invent facts.
+
+Return JSON: {{"title": "...", "logline": "one sentence",
+  "acts": [{{"act": "giris", "beats": ["one line per scene: what happens + claim ids"], "claim_refs": ["C#", ...]}}, ...]}}
+
+CLAIMS ([verified]=2+ sources, [weak]=single source, [conflict]=disputed):
+{claims}
+""", "script_outline", 0.6)
+    beats = {a.get("act"): a for a in outline.get("acts", [])}
+
+    # 2) Bölüm bölüm yazım
+    acts_out, all_errs, previous = [], [], ""
+    for a in ACTS:
+        words_target, n_scenes = plan[a]
+        b = beats.get(a, {})
+        prompt = f"""
+You are writing ONE act of a {p['target_minutes']}-minute documentary in {lang}: "{outline.get('title', p['title'])}".
+Logline: {outline.get('logline', '')}
+
+ACT: {a} = {ACT_TR[a]}
+Write EXACTLY {n_scenes} scenes, about {SCENE_WORDS} words of narration each (total about {words_target} words, ±10%).
+Planned beats: {json.dumps(b.get('beats', []), ensure_ascii=False)}
+
+{STYLE}
+
+{"The previous act ended with: " + chr(34) + previous[-400:] + chr(34) + " — continue smoothly, do not repeat it." if previous else "This is the opening of the film."}
+
+Each scene must cite the claim ids it uses in "claim_refs" (atmosphere-only scenes may have an empty list).
+[conflict] claims only as an explicitly disputed point with "disputed": true.
+
+CAMERA = {CAMERA}
+TRANSITIONS = {TRANSITIONS}
+
+Return JSON: {{"scenes": [{SCENE_SCHEMA}]}}
+
+CLAIMS:
+{claims}
+"""
+        data, errs = _write_with_repair(conn, prompt, lambda d, a=a, w=words_target, n=n_scenes: _validate_act(d, n, w, status, a),
+                                        f"script_act_{a}")
+        scenes = data.get("scenes") or []
+        acts_out.append({"act": a, "scenes": scenes})
+        all_errs += errs
+        previous = " ".join(sc.get("voiceover", "") for sc in scenes[-2:])
+
+    full = {"title": outline.get("title") or p["title"], "logline": outline.get("logline"), "acts": acts_out}
+    final_errs = validate_doc(full, budget, status)
+    scenes = [{**sc, "_act": a["act"]} for a in acts_out for sc in a["scenes"]]
+    if not scenes:
+        raise RuntimeError("Senaryo üretilemedi: " + "; ".join(all_errs[:5]))
+    version, total = _save(conn, p["id"], "doc", full, scenes, wpm, final_errs)
+    return StepResult(output={"version": version, "scenes": len(scenes), "words": total,
+                              "est_minutes": round(total / wpm, 2), "budget_words": budget, "validation_errors": final_errs})
+
+
+SHORTS_PLAN = [7, 17, 17, 17, 17, 17, 17, 23]   # kelime/sahne: 3 sn kanca + gövde + kapanış (≈132 kelime ≈ 55 sn)
+
+
+def script_shorts(conn, step) -> StepResult:
+    p = conn.execute("select * from projects where id=%s", (step["project_id"],)).fetchone()
+    wpm = _setting(conn, "shorts_wpm", 145)
+    budget = int(p["shorts_seconds"] / 60 * wpm)
+    scale = budget / sum(SHORTS_PLAN)
+    per_scene = [max(5, round(w * scale)) for w in SHORTS_PLAN]
+    per_scene[0] = min(per_scene[0], 8)
+    claims, status = _claims_block(conn, p["id"])
+    doc = conn.execute("select content->>'title' t from scripts where project_id=%s and kind='doc' order by version desc limit 1",
+                       (p["id"],)).fetchone()
+    lang = LANG_NAME.get(p["language"], p["language"])
+    prompt = f"""
+Write an independent YouTube Shorts script ({p['shorts_seconds']} seconds, vertical 9:16) in {lang}.
+Topic: {p['topic']}. The full documentary is titled: "{doc['t'] if doc else p['title']}".
+
+Write EXACTLY {len(per_scene)} scenes with these narration lengths in words: {per_scene} (total about {budget} words).
+- Scene 1 = HOOK (about 3 seconds): instant curiosity — a shocking fact, a question or tension. It must be TRUE to the claims.
+- One focused story arc with escalating tension; it must make sense on its own.
+- Last scene: a natural line that makes viewers want the full documentary (no "like and subscribe").
+- Visuals must work in vertical framing (close-ups, details, single subjects).
+
+{STYLE}
+
+Cite claim ids in "claim_refs". [conflict] claims only as an explicitly disputed point with "disputed": true.
+
+CAMERA = {CAMERA}
+TRANSITIONS = {TRANSITIONS}
+
+Return JSON: {{"title": "...", "scenes": [{SCENE_SCHEMA}]}}
+
+CLAIMS:
+{claims}
+"""
+    data, errs = _write_with_repair(conn, prompt, lambda d: validate_shorts(d, budget, status), "script_shorts")
+    scenes = [{**sc, "_act": "shorts"} for sc in data.get("scenes", [])]
+    if not scenes:
+        raise RuntimeError("Shorts senaryosu üretilemedi: " + "; ".join(errs[:5]))
+    version, total = _save(conn, p["id"], "shorts", data, scenes, wpm, errs)
+    return StepResult(output={"version": version, "scenes": len(scenes), "words": total,
+                              "est_seconds": round(total / wpm * 60, 1), "budget_words": budget, "validation_errors": errs})
 
 
 def _save(conn, project_id, kind, data, scenes, wpm, errs):
@@ -160,83 +315,3 @@ def _save(conn, project_id, kind, data, scenes, wpm, errs):
     return version, total
 
 
-def script_doc(conn, step) -> StepResult:
-    p = conn.execute("select * from projects where id=%s", (step["project_id"],)).fetchone()
-    wpm = _setting(conn, "narration_wpm", 135)
-    budget = int(float(p["target_minutes"]) * wpm)
-    claims, status = _claims_block(conn, p["id"])
-    if not claims:
-        raise RuntimeError("Senaryo için doğrulanmış iddia yok; araştırma adımları tamamlanmalı")
-    lang = LANG_NAME.get(p["language"], p["language"])
-    prompt = f"""
-Write a {p['target_minutes']}-minute documentary script in {lang}. Style: {p['style']}.
-Topic: {p['topic']}
-
-STRUCTURE (exactly these acts, in this order): {', '.join(f'{a} = {ACT_TR[a]}' for a in ACTS)}.
-- giris: a gripping cold open (a vivid moment, question or paradox) in the first 20 seconds.
-- donum_noktasi: the critical turning point of the story.
-- kapanis: a strong, memorable ending that resonates with today.
-
-LENGTH: total narration about {budget} words (±10%). Each scene 10-25 seconds (≈ 25-55 words), max {MAX_SCENE_WORDS} words.
-
-FACTS: use ONLY the claims below. Every factual sentence must cite claim ids in "claim_refs".
-[weak] = single source: phrase carefully ("kaynaklara göre", "anlatılana göre").
-[conflict] claims may only appear as an explicitly disputed point with "disputed": true.
-Never invent names, numbers, dates or quotes.
-
-Narration must sound natural when read aloud by a TTS voice: no stage directions, no brackets,
-no abbreviations, write numbers as words if ambiguous, short sentences.
-
-CAMERA = {CAMERA}
-TRANSITIONS = {TRANSITIONS}
-
-Return JSON:
-{{"title": "...", "logline": "one sentence",
-  "acts": [{{"act": "giris", "scenes": [{SCENE_SCHEMA}]}}, ...]}}
-
-CLAIMS:
-{claims}
-"""
-    data, errs = _generate(conn, prompt, lambda d: validate_doc(d, budget, status), "script_doc")
-    scenes = [{**s, "_act": a.get("act")} for a in data.get("acts", []) for s in a.get("scenes", [])]
-    if not scenes:
-        raise RuntimeError("Senaryo üretilemedi: " + "; ".join(errs[:5]))
-    version, total = _save(conn, p["id"], "doc", data, scenes, wpm, errs)
-    return StepResult(output={"version": version, "scenes": len(scenes), "words": total,
-                              "est_minutes": round(total / wpm, 2), "budget_words": budget, "validation_errors": errs})
-
-
-def script_shorts(conn, step) -> StepResult:
-    p = conn.execute("select * from projects where id=%s", (step["project_id"],)).fetchone()
-    wpm = _setting(conn, "shorts_wpm", 155)
-    budget = int(p["shorts_seconds"] / 60 * wpm)
-    claims, status = _claims_block(conn, p["id"])
-    doc = conn.execute("select content->>'title' t from scripts where project_id=%s and kind='doc' order by version desc limit 1",
-                       (p["id"],)).fetchone()
-    lang = LANG_NAME.get(p["language"], p["language"])
-    prompt = f"""
-Write an independent YouTube Shorts script ({p['shorts_seconds']} seconds, vertical 9:16) in {lang}.
-Topic: {p['topic']}. The full documentary is titled: "{doc['t'] if doc else p['title']}".
-
-- Scene 1 is the HOOK: max 8 words, about 3 seconds, creates instant curiosity (shocking fact, question, or tension).
-- Must make sense on its own, tell ONE focused story arc with escalating tension.
-- End with a natural line that makes viewers want the full documentary (no "like and subscribe").
-- Total narration about {budget} words (±10%), 5-12 scenes, each 3-8 seconds.
-- Visuals must work in vertical framing (close-ups, details, single subjects).
-- Use ONLY the claims below, cite them in "claim_refs". Same rules for [weak]/[conflict] as a documentary.
-
-CAMERA = {CAMERA}
-TRANSITIONS = {TRANSITIONS}
-
-Return JSON: {{"title": "...", "scenes": [{SCENE_SCHEMA}]}}
-
-CLAIMS:
-{claims}
-"""
-    data, errs = _generate(conn, prompt, lambda d: validate_shorts(d, budget, status), "script_shorts")
-    scenes = [{**s, "_act": "shorts"} for s in data.get("scenes", [])]
-    if not scenes:
-        raise RuntimeError("Shorts senaryosu üretilemedi: " + "; ".join(errs[:5]))
-    version, total = _save(conn, p["id"], "shorts", data, scenes, wpm, errs)
-    return StepResult(output={"version": version, "scenes": len(scenes), "words": total,
-                              "est_seconds": round(total / wpm * 60, 1), "budget_words": budget, "validation_errors": errs})

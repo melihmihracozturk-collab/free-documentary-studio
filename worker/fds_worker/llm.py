@@ -11,12 +11,16 @@ import hashlib
 import json
 import os
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
 import httpx
 
 from . import http
+
+
+RATE_LIMIT_WAIT = 45  # sn; Gemini ücretsiz katmanı dakika başı sınırlı
 
 
 class LLMError(Exception):
@@ -125,13 +129,21 @@ def complete_json(conn, system: str, prompt: str, *, task: str, temperature: flo
     else:
         errors: list[str] = []
         result, prov = None, None
-        for p in providers():
-            try:
-                result = parse_json(p.call(system, prompt, temperature))
-                prov = p
+        # Ücretsiz katman dakika başı sınırı (429) veya geçici yoğunluk (503): tüm zincir başarısızsa bekleyip tekrar dene.
+        for round_ in range(3):
+            transient = False
+            for p in providers():
+                try:
+                    result = parse_json(p.call(system, prompt, temperature))
+                    prov = p
+                    break
+                except (http.RateLimited, httpx.HTTPError, LLMError, json.JSONDecodeError, KeyError) as e:
+                    msg = str(e)
+                    transient |= isinstance(e, http.RateLimited) or " 429 " in msg or " 503 " in msg
+                    errors.append(f"{p.name}/{p.model}: {type(e).__name__}: {msg.splitlines()[0][:160]}")
+            if prov is not None or not transient or round_ == 2:
                 break
-            except (http.RateLimited, httpx.HTTPError, LLMError, json.JSONDecodeError, KeyError) as e:
-                errors.append(f"{p.name}/{p.model}: {type(e).__name__}: {str(e)[:200]}")
+            time.sleep(RATE_LIMIT_WAIT)
         if prov is None:
             if not errors:
                 raise LLMError("Hiçbir LLM anahtarı tanımlı değil (GEMINI_API_KEY / GROQ_API_KEY / OPENROUTER_API_KEY)")

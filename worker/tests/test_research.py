@@ -3,6 +3,7 @@
 Gerçek LLM ve ağ çağrısı yapılmaz: kaynaklar sabit metinlerle, LLM sahte bir yanıtlayıcıyla taklit edilir.
 Amaç kodun kurallarını sınamak: alıntı doğrulama, bağımsız kaynak sayımı, çelişki, kelime bütçesi, düzeltme döngüsü.
 """
+import json
 import re
 
 import pytest
@@ -98,19 +99,22 @@ class Fake:
         if "research summary" in prompt:
             self.calls.append("summary")
             return {"summary": "Vezüv MS 79'da patladı; tarih tartışmalı."}
-        if "documentary script" in prompt:
-            self.calls.append("script_doc" if "previous answer" not in prompt else "script_doc_repair")
-            budget = int(re.search(r"about (\d+) words", prompt).group(1))
-            if self.bad_first_script and self.calls.count("script_doc") == 1 and "previous answer" not in prompt:
-                return {"title": "x", "acts": [{"act": "giris", "scenes": [scene(10, ["C99"])]}]}
-            per = budget // 30
-            acts = [{"act": a, "scenes": [scene(per, ["C1"]) for _ in range(5)]} for a in script.ACTS]
-            return {"title": "Pompei'nin Son Günü", "logline": "Bir şehir bir günde.", "acts": acts}
+        if "Plan a " in prompt and "documentary in" in prompt:
+            self.calls.append("outline")
+            return {"title": "Pompei'nin Son Günü", "logline": "Bir şehir bir günde.",
+                    "acts": [{"act": a, "beats": ["sahne"], "claim_refs": ["C1"]} for a in script.ACTS]}
+        if "You are writing ONE act" in prompt:
+            act = re.search(r"ACT: (\w+)", prompt).group(1)
+            self.calls.append(f"act_{act}" + ("_repair" if "previous answer" in prompt else ""))
+            n = int(re.search(r"EXACTLY (\d+) scenes", prompt).group(1))
+            total = int(re.search(r"total about (\d+) words", prompt).group(1))
+            if self.bad_first_script and act == "giris" and "previous answer" not in prompt:
+                return {"scenes": [scene(5, ["C99"])]}
+            return {"scenes": [scene(total // n, ["C1"]) for _ in range(n)]}
         if "YouTube Shorts" in prompt:
             self.calls.append("shorts")
-            budget = int(re.search(r"about (\d+) words", prompt).group(1))
-            rest = budget - 6
-            return {"title": "Pompei", "scenes": [scene(6, ["C1"])] + [scene(rest // 6, ["C2"]) for _ in range(6)]}
+            sizes = json.loads(re.search(r"narration lengths in words: (\[[^\]]*\])", prompt).group(1))
+            return {"title": "Pompei", "scenes": [scene(w, ["C2"]) for w in sizes]}
         raise AssertionError("beklenmeyen istem: " + prompt[:200])
 
 
@@ -191,15 +195,16 @@ def test_research_and_script_pipeline(db_url, conn, fake):
     assert s["script_doc"]["status"] == "done" and s["script_shorts"]["status"] == "done"
     assert s["visual_plan"]["status"] == "pending"                                           # Stage 5 işleyicisi yok
     out = s["script_doc"]["output"]
-    assert out["validation_errors"] == [] and out["scenes"] == 30
+    assert out["validation_errors"] == [] and 25 <= out["scenes"] <= 40
     assert 10 <= out["est_minutes"] * 1.0 <= 12.2
     doc_scenes = conn.execute("select * from scenes where project_id=%s and kind='doc' order by idx", (pid,)).fetchall()
-    assert len(doc_scenes) == 30 and doc_scenes[0]["act"] == "giris" and doc_scenes[-1]["act"] == "kapanis"
+    assert doc_scenes[0]["act"] == "giris" and doc_scenes[-1]["act"] == "kapanis"
+    assert fake.calls.count("outline") == 1 and all(f"act_{a}" in fake.calls for a in script.ACTS)
     assert doc_scenes[0]["search_keywords"] == ["Vesuvius painting"]
     sh = s["script_shorts"]["output"]
     assert sh["validation_errors"] == [] and 45 <= sh["est_seconds"] <= 62
     vo = conn.execute("select voiceover_text from scripts where project_id=%s and kind='shorts'", (pid,)).fetchone()
-    assert vo["voiceover_text"].count("\n\n") == 6
+    assert vo["voiceover_text"].count("\n\n") == 7
 
     # Önbellek: aynı adımları yeniden çalıştırmak LLM'e tekrar gitmez
     n_calls = len(fake.calls)
@@ -215,7 +220,7 @@ def test_script_repair_loop(db_url, conn, monkeypatch):
     conn.execute("insert into claims (project_id, ref, text, status) values (%s,'C1','x','verified'),(%s,'C2','y','weak')", (pid, pid))
     step = steps(conn, job)["script_doc"]
     res = script.script_doc(conn, step)
-    assert f.calls == ["script_doc", "script_doc_repair"]
+    assert f.calls[:3] == ["outline", "act_giris", "act_giris_repair"]   # kısa/hatalı bölüm yeniden yazdırıldı
     assert res.output["validation_errors"] == []
 
 
