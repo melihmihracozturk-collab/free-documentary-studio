@@ -23,6 +23,20 @@ try {
   if (errs.length) out.push("", "## Uyarılar / hatalar", "", ...errs.map((e) => `- ${e.level} · ${e.step_key ?? ""}: ${e.message}`));
   const usage = await sql`select metric, sum(value)::int n from usage_metrics where period = current_date group by metric order by metric`;
   if (usage.length) out.push("", "## Bugünkü LLM kullanımı", "", ...usage.map((u) => `- ${u.metric}: ${u.n}`));
+  const vos = await sql`select kind, filename, bytes, status, duration_sec, coverage, analysis from voiceovers where project_id = ${p.id} order by kind`;
+  if (vos.length) {
+    out.push("", "## Seslendirme", "");
+    for (const v of vos) {
+      const a = v.analysis ?? {};
+      out.push(`- **${v.kind}** · ${v.filename} · ${(Number(v.bytes) / 1048576).toFixed(1)} MB · ${v.status}` +
+        (v.duration_sec ? ` · süre ${Number(v.duration_sec).toFixed(1)} sn · eşleşme %${Math.round(Number(v.coverage) * 100)} · ${a.wpm} kelime/dk · ${a.pauses} duraklama` : ""));
+      for (const w of a.warnings ?? []) out.push(`  - ⚠️ ${w}`);
+    }
+    for (const kind of ["doc", "shorts"]) {
+      const sc = await sql`select idx, start_sec, end_sec, left(voiceover_text, 70) t from scenes where project_id = ${p.id} and kind = ${kind} and start_sec is not null order by idx`;
+      if (sc.length) out.push("", `### Sahne zamanları (${kind})`, "", ...sc.map((x) => `- #${x.idx} ${Number(x.start_sec).toFixed(1)}–${Number(x.end_sec).toFixed(1)} sn · ${x.t}…`));
+    }
+  }
   const [r] = await sql`select markdown from research_reports where project_id = ${p.id} order by version desc limit 1`;
   if (r) out.push("", "---", "", r.markdown);
   for (const kind of ["doc", "shorts"]) {
