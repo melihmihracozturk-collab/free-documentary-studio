@@ -24,7 +24,7 @@ if (!(minutes >= 8 && minutes <= 15)) {
 }
 const sql = postgres(DATABASE_URL, { prepare: false, max: 1, onnotice: () => {} });
 try {
-  const base = slugify(TOPIC.split(/[—–:-]/)[0] || TOPIC);
+  const base = slugify(TOPIC);
   let slug = base;
   for (let i = 2; (await sql`select 1 from projects where slug = ${slug}`).length; i++) slug = `${base}-${i}`;
   await sql.begin(async (tx) => {

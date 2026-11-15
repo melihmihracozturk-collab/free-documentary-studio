@@ -24,7 +24,7 @@ export async function createProject(_prev: FormState, form: FormData): Promise<F
   const { topic, language, target_minutes, style } = parsed.data;
 
   const sql = db();
-  const base = slugify(topic.split(/[—–:-]/)[0] || topic);
+  const base = slugify(topic);
   let slug = base;
   for (let i = 2; ; i++) {
     const [exists] = await sql`select 1 from projects where slug = ${slug}`;
