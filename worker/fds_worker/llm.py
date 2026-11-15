@@ -27,6 +27,10 @@ class LLMError(Exception):
     pass
 
 
+class QuotaExhausted(LLMError):
+    """Tüm sağlayıcılar kota/yoğunluk (429/503) nedeniyle yanıt vermedi. Adım ertelenmeli, başarısız sayılmamalı."""
+
+
 @dataclass
 class Provider:
     name: str
@@ -38,18 +42,25 @@ def _gemini(model: str):
     key = os.environ["GEMINI_API_KEY"]
 
     def call(system: str, prompt: str, temperature: float) -> str:
-        r = http.request(
-            "POST",
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+        try:
+            r = http.request(
+                "POST",
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
             headers={"x-goog-api-key": key},
             json={
                 "systemInstruction": {"parts": [{"text": system}]},
                 "contents": [{"role": "user", "parts": [{"text": prompt}]}],
                 "generationConfig": {"temperature": temperature, "responseMimeType": "application/json"},
-            },
-            timeout=240,
-            retries=1,
-        )
+                },
+                timeout=240,
+                retries=1,
+            )
+        except httpx.HTTPStatusError as e:
+            # Gövdedeki kota adı (ör. ...PerDay...) teşhis için eklenir; anahtar başlıkta olduğundan mesajda yer almaz.
+            body = e.response.text
+            quota = re.findall(r'"quotaId":\s*"([^"]+)"', body) or re.findall(r'"message":\s*"([^"]{0,160})', body)
+            raise httpx.HTTPStatusError(f"{e.response.status_code} {'; '.join(quota[:2])}", request=e.request,
+                                        response=e.response) from None
         data = r.json()
         try:
             return "".join(p.get("text", "") for p in data["candidates"][0]["content"]["parts"])
@@ -139,11 +150,14 @@ def complete_json(conn, system: str, prompt: str, *, task: str, temperature: flo
                     break
                 except (http.RateLimited, httpx.HTTPError, LLMError, json.JSONDecodeError, KeyError) as e:
                     msg = str(e)
-                    transient |= isinstance(e, http.RateLimited) or " 429 " in msg or " 503 " in msg
+                    code = getattr(getattr(e, "response", None), "status_code", None)
+                    transient |= isinstance(e, http.RateLimited) or code in (429, 503) or " 429 " in msg or " 503 " in msg
                     errors.append(f"{p.name}/{p.model}: {type(e).__name__}: {msg.splitlines()[0][:160]}")
             if prov is not None or not transient or round_ == 2:
                 break
             time.sleep(RATE_LIMIT_WAIT)
+        if prov is None and transient:
+            raise QuotaExhausted("LLM kotası dolu veya servis yoğun; adım ertelendi: " + " | ".join(errors[-2:]))
         if prov is None:
             if not errors:
                 raise LLMError("Hiçbir LLM anahtarı tanımlı değil (GEMINI_API_KEY / GROQ_API_KEY / OPENROUTER_API_KEY)")

@@ -23,6 +23,7 @@ CAMERA = ["zoom_in", "zoom_out", "pan_left", "pan_right", "pan_up", "pan_down", 
 TRANSITIONS = ["cut", "crossfade", "fade_black", "dip_white", "wipe", "slide"]
 MAX_SCENE_WORDS = 75
 TOLERANCE = 0.12
+ACT_TOLERANCE = 0.25
 
 
 def words(text: str) -> int:
@@ -140,7 +141,7 @@ def _llm_json(conn, prompt: str, task: str, temperature: float = 0.7) -> dict:
 def _write_with_repair(conn, prompt: str, validator, task: str) -> tuple[dict, list[str]]:
     data = _llm_json(conn, prompt, task)
     errs = validator(data)
-    for _ in range(2):
+    for _ in range(1):           # en fazla 1 düzeltme: kota korunur, kalan eksikleri editör turu giderir
         if not errs:
             break
         data = _llm_json(conn, f"""{prompt}
@@ -165,8 +166,9 @@ def _validate_act(data: dict, n_scenes: int, words_target: int, claim_status: di
         errs.append(f"{act}: {len(scenes)} sahne; yaklaşık {n_scenes} olmalı")
     for i, sc in enumerate(scenes, 1):
         errs += [f"{act} {e}" for e in _validate_scene(sc, i, claim_status)]
+    # Bölüm uzunluğunda geniş tolerans: toplamı editör turu tamamlar (gereksiz düzeltme çağrısı = kota israfı).
     total = sum(words(sc.get("voiceover", "")) for sc in scenes)
-    lo, hi = int(words_target * (1 - TOLERANCE)), int(words_target * (1 + TOLERANCE))
+    lo, hi = int(words_target * (1 - ACT_TOLERANCE)), int(words_target * (1 + ACT_TOLERANCE))
     if not lo <= total <= hi:
         errs.append(f"{act}: {total} kelime; {lo}-{hi} arasında olmalı (hedef {words_target}). "
                     f"{'Daha fazla sahne/cümle ekleyin.' if total < lo else 'Kısaltın.'}")

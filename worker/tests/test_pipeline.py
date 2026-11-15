@@ -141,3 +141,20 @@ def test_reset_from_step(db_url, conn):
     assert s["research_review"]["status"] == "pending" and n >= 6
     run(db_url, 1, dry_run=True, once=False)
     assert steps(conn, job)["research_review"]["status"] == "waiting_input"   # onay yeniden istenir
+
+
+def test_quota_exhausted_defers_without_burning_attempts(db_url, conn, monkeypatch):
+    from fds_worker.llm import QuotaExhausted
+    import fds_worker.main as M
+    _, job = make_project(conn)
+
+    def quota(_conn, _step):
+        raise QuotaExhausted("429 GenerateRequestsPerDayPerProjectPerModel-FreeTier")
+
+    monkeypatch.setattr(M, "registry", lambda dry: {"research_collect": quota, "research_verify": quota})
+    for _ in range(5):
+        run(db_url, 1, dry_run=False, once=False)
+    s = steps(conn, job)["research_collect"]
+    assert s["status"] == "pending" and s["attempts"] == 0          # 5 kez ertelendi, hak harcanmadı
+    assert "PerDay" in s["error"]
+    assert conn.execute("select status from jobs where id=%s", (job,)).fetchone()["status"] != "failed"
