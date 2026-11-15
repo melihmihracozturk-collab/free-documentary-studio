@@ -10,7 +10,7 @@ import uuid
 
 import httpx
 
-TEST_ORIGIN = "https://ornek-panel.vercel.app"
+TEST_ORIGIN = (os.environ.get("PANEL_ORIGIN") or "https://free-documentary-studio.vercel.app").strip()
 
 
 def _db():

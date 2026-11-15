@@ -19,7 +19,9 @@ function putWithProgress(url: string, file: File, contentType: string, onProgres
     xhr.setRequestHeader("Content-Type", contentType);
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
     xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`R2 yanıtı ${xhr.status}`)));
-    xhr.onerror = () => reject(new Error("Ağ hatası veya R2 CORS ayarı eksik"));
+    xhr.onerror = () => reject(new Error(
+      `R2'ye ulaşılamadı. R2 CORS ayarında bu adres izinli olmalı: ${window.location.origin} ` +
+      "(paneli her zaman aynı adresten açın; reklam engelleyici de yüklemeyi kesebilir)."));
     xhr.send(file);
   });
 }
