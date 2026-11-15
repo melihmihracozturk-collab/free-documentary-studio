@@ -167,3 +167,21 @@ def test_quota_exhausted_defers_without_burning_attempts(db_url, conn, monkeypat
     assert s["status"] == "pending" and s["attempts"] == 0          # 5 kez ertelendi, hak harcanmadı
     assert "PerDay" in s["error"]
     assert conn.execute("select status from jobs where id=%s", (job,)).fetchone()["status"] != "failed"
+
+
+def test_voiceovers_uploaded_before_wait_step_opens(db_url, conn):
+    """Hata düzeltmesi: sesler, 'seslendirme bekleniyor' adımı açılmadan önce yüklenirse süreç takılmamalı."""
+    pid, job = make_project(conn)
+    run(db_url, 1, dry_run=True, once=False)
+    conn.execute("select resolve_input_step(%s)", (steps(conn, job)["research_review"]["id"],))
+    run(db_url, 1, dry_run=True, once=False)
+    conn.execute("select resolve_input_step(%s)", (steps(conn, job)["script_review"]["id"],))
+    # İşçi henüz voiceover_texts'i çalıştırmadan kullanıcı iki sesi de yükler
+    assert steps(conn, job)["voiceover_wait"]["status"] == "pending"
+    for kind in ("doc", "shorts"):
+        conn.execute("insert into voiceovers (project_id, kind, storage_key, filename, bytes) values (%s,%s,'k','f',10)", (pid, kind))
+    run(db_url, 1, dry_run=True, once=False)
+    s = steps(conn, job)
+    assert s["voiceover_texts"]["status"] == "done"
+    assert s["voiceover_wait"]["status"] == "done"
+    assert s["voiceover_analyze"]["status"] == "done"
