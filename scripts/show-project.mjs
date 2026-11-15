@@ -37,6 +37,15 @@ try {
       if (sc.length) out.push("", `### Sahne zamanları (${kind})`, "", ...sc.map((x) => `- #${x.idx} ${Number(x.start_sec).toFixed(1)}–${Number(x.end_sec).toFixed(1)} sn · ${x.t}…`));
     }
   }
+  const av = await sql`select a.source, a.license_class, (a.storage_key is not null) dl, a.reject_reason, a.width, s.kind, s.idx,
+                              left(a.title, 60) title, left(a.file_url, 90) url
+                         from scenes s join assets a on a.id = s.asset_id where s.project_id = ${p.id} order by s.kind, s.idx`;
+  if (av.length) {
+    const by = (f) => av.reduce((m, x) => ((m[f(x)] = (m[f(x)] ?? 0) + 1), m), {});
+    out.push("", "## Görseller", "", `- Kaynak: ${JSON.stringify(by((x) => x.source))}`, `- Lisans: ${JSON.stringify(by((x) => x.license_class))}`,
+      `- R2'ye indirilen: ${av.filter((x) => x.dl).length}/${av.length}`);
+    for (const x of av.filter((x) => !x.dl)) out.push(`  - ${x.kind}#${x.idx} ${x.source}: ${x.reject_reason ?? "indirilmedi"} · ${x.url}`);
+  }
   const [r] = await sql`select markdown from research_reports where project_id = ${p.id} order by version desc limit 1`;
   if (r) out.push("", "---", "", r.markdown);
   for (const kind of ["doc", "shorts"]) {
