@@ -29,9 +29,15 @@ export async function RenderView({ projectId, slug, kind }: { projectId: string;
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Süre" value={fmt(Number(r.duration_sec))} />
         <Stat label="Çözünürlük" value={`${r.width}×${r.height}`} hint={`${Number(r.fps)} fps · H.264`} />
-        <Stat label="Dosya" value={formatBytes(Number(r.bytes))} hint="MP4 · AAC 192k" />
+        <Stat label="Dosya" value={formatBytes(Number(r.bytes))}
+              hint={`${((Number(r.bytes) * 8) / Number(r.duration_sec) / 1e6).toFixed(1)} Mbps · MP4 · AAC 192k`} />
         <Stat label="Render" value={formatDate(r.created_at)} />
       </div>
+      <Card title="Kontrol kareleri (videodan 9 kare)">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={`/api/projects/${slug}/render/${kind}/poster`} alt="Videodan eşit aralıklı 9 kare" loading="lazy"
+             className={`mx-auto rounded-lg ${vertical ? "max-h-[70vh]" : "w-full"}`} />
+      </Card>
       <Card title="Önizleme">
         <video controls preload="metadata" src={`/api/projects/${slug}/render/${kind}`}
                className={`mx-auto rounded-lg bg-black ${vertical ? "max-h-[75vh] aspect-[9/16]" : "w-full aspect-video"}`} />

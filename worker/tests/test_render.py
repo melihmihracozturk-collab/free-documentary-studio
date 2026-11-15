@@ -136,6 +136,18 @@ def test_subtitles_and_render_doc_end_to_end(conn, s3, tmp_path):  # noqa: F811
     r = conn.execute("select * from renders where project_id=%s", (pid,)).fetchone()
     assert (r["width"], r["height"], r["status"]) == (1920, 1080, "done") and r["bytes"] > 10_000
 
-    # Kaldığı yerden devam: ikinci render'da klipler R2'den yeniden kullanılır
+    assert out.output["clips_deleted"] == 3                                  # başarılı render sonrası ara klipler silindi
+    assert r["poster_key"].endswith("doc_contact.jpg")
+    storage.client().head_object(Bucket="fds-test", Key=r["poster_key"])
+
+    # Kaldığı yerden devam: render ortasında kesilirse (birleştirme hatası) klipler R2'de kalır ve tekrar kullanılır
+    import fds_worker.render as RR
+    orig = RR.assemble
+    RR.assemble = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("kesinti"))
+    try:
+        with pytest.raises(RuntimeError):
+            R.render_doc(conn, steps(conn, job)["render_doc"])
+    finally:
+        RR.assemble = orig
     out2 = R.render_doc(conn, steps(conn, job)["render_doc"])
     assert out2.output["clips_reused"] == 3 and out2.output["clips_rendered"] == 0

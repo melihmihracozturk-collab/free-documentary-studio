@@ -22,7 +22,10 @@ from psycopg.types.json import Jsonb
 from . import storage, visuals, voiceover
 from .handlers import StepResult
 
-RENDER_VERSION = "r3"          # klip önbellek anahtarına girer; görüntü işleme değişince artırılır
+RENDER_VERSION = "r3"
+# YouTube önerisi: 1080p SDR ~8 Mbps. Tavan olmadan gren yüzünden 12 dk'lık video 2,4 GB çıkıyordu.
+MAXRATE = {"doc": "8M", "shorts": "8M"}
+BUFSIZE = {"doc": "16M", "shorts": "16M"}          # klip önbellek anahtarına girer; görüntü işleme değişince artırılır
 
 
 @dataclass(frozen=True)
@@ -257,7 +260,8 @@ def assemble(clips: list[Path], lens: list[float], starts: list[float], trans: l
         lbl = f"[x{k}]"
         fg.append(f"{last}[{k}:v]xfade=transition={name}:duration={td:.3f}:offset={starts[k]:.3f}{lbl}")
         last = lbl
-    look = "eq=contrast=1.06:saturation=0.92:gamma=0.98,vignette=angle=PI/5,noise=alls=7:allf=t"
+    # Hafif gren: her karede değişen gürültü sıkıştırmayı zorlaştırır; bit hızı tavanıyla birlikte dengeli tutulur
+    look = "eq=contrast=1.06:saturation=0.92:gamma=0.98,vignette=angle=PI/5,noise=alls=3:allf=t"
     sub = f",subtitles=filename='{ass}'" if ass else ""
     fg.append(f"{last}{look}{sub},trim=duration={duration:.3f},format=yuv420p[vout]")
     voice = f"[{ai}:a]aresample=48000,aformat=channel_layouts=stereo" + (f",atempo={tempo:.4f}" if abs(tempo - 1) > 1e-3 else "")
@@ -269,8 +273,8 @@ def assemble(clips: list[Path], lens: list[float], starts: list[float], trans: l
     else:
         fg.append(f"{voice},loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]")
     run(["ffmpeg", "-y", "-nostdin", "-loglevel", "error", *inputs, "-filter_complex", ";".join(fg),
-         "-map", "[vout]", "-map", "[aout]", "-r", str(fmt.fps), "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart",
+         "-map", "[vout]", "-map", "[aout]", "-r", str(fmt.fps), "-c:v", "libx264", "-preset", "medium", "-crf", "21",
+         "-maxrate", MAXRATE[fmt.kind], "-bufsize", BUFSIZE[fmt.kind], "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart",
          "-t", f"{duration:.3f}", str(out)])
 
 
@@ -362,15 +366,49 @@ def render_video(conn, step, fmt: Format, out_name: str, tempo: float = 1.0) -> 
         vs = next(x for x in info["streams"] if x["codec_type"] == "video")
         if abs(got - duration) > 1.0 or (vs["width"], vs["height"]) != (fmt.w, fmt.h):
             raise RuntimeError(f"Çıktı kontrolü başarısız: süre {got:.1f}/{duration:.1f} sn, {vs['width']}x{vs['height']}")
-        key = storage.project_key(p["slug"], "renders" if fmt.kind == "doc" else "shorts", out_name)
+        folder = "renders" if fmt.kind == "doc" else "shorts"
+        key = storage.project_key(p["slug"], folder, out_name)
         sha = storage.upload_file(key, out, "video/mp4")
         size = out.stat().st_size
+        sheet = tmp / "contact.jpg"
+        contact_sheet(out, sheet, got, fmt)
+        poster_key = storage.project_key(p["slug"], folder, f"{fmt.kind}_contact.jpg")
+        storage.upload_file(poster_key, sheet, "image/jpeg")
+    # Başarılı render sonrası ara klipleri sil (yalnızca kesinti durumunda gerekli; R2 alanını korur)
+    removed = delete_prefix(storage.project_key(p["slug"], "scenes", fmt.kind) + "/")
     conn.execute("delete from renders where project_id=%s and kind=%s", (p["id"], fmt.kind))
-    conn.execute("insert into renders (project_id, kind, storage_key, width, height, fps, duration_sec, bytes, sha256, status) "
-                 "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,'done')", (p["id"], fmt.kind, key, fmt.w, fmt.h, fmt.fps, got, size, sha))
-    return StepResult(output={"duration_sec": round(got, 2), "bytes": size, "clips_rendered": rendered, "clips_reused": reused,
+    conn.execute("insert into renders (project_id, kind, storage_key, width, height, fps, duration_sec, bytes, sha256, status, poster_key) "
+                 "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,'done',%s)", (p["id"], fmt.kind, key, fmt.w, fmt.h, fmt.fps, got, size, sha, poster_key))
+    return StepResult(output={"duration_sec": round(got, 2), "bytes": size, "mbps": round(size * 8 / got / 1e6, 2),
+                              "clips_rendered": rendered, "clips_reused": reused, "clips_deleted": removed,
                               "scenes": len(scenes), "tempo": tempo, "codec": vs["codec_name"]},
                       output_key=key, sha256=sha)
+
+
+def contact_sheet(video: Path, out: Path, duration: float, fmt: Format, n: int = 9) -> None:
+    """Videodan eşit aralıklı n kare → 3x3 kontrol görseli (kalite kontrolü ve panel önizlemesi)."""
+    tw = 640 if fmt.kind == "doc" else 360
+    frames = []
+    for i in range(n):
+        f = out.parent / f"cs{i}.jpg"
+        t = duration * (i + 0.5) / n
+        run(["ffmpeg", "-y", "-nostdin", "-loglevel", "error", "-ss", f"{t:.2f}", "-i", str(video), "-frames:v", "1",
+             "-vf", f"scale={tw}:-2", str(f)])
+        frames.append(f)
+    inputs = [x for f in frames for x in ("-i", str(f))]
+    rows = ";".join(f"[{3 * r}][{3 * r + 1}][{3 * r + 2}]hstack=3[r{r}]" for r in range(3))
+    run(["ffmpeg", "-y", "-nostdin", "-loglevel", "error", *inputs, "-filter_complex", f"{rows};[r0][r1][r2]vstack=3",
+         "-q:v", "4", str(out)])
+
+
+def delete_prefix(prefix: str) -> int:
+    n = 0
+    for page in storage.client().get_paginator("list_objects_v2").paginate(Bucket=storage.bucket(), Prefix=prefix):
+        objs = [{"Key": o["Key"]} for o in page.get("Contents", [])]
+        if objs:
+            storage.client().delete_objects(Bucket=storage.bucket(), Delete={"Objects": objs})
+            n += len(objs)
+    return n
 
 
 def _retime_ass(text: str, tempo: float) -> str:
