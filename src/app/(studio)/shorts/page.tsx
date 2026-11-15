@@ -5,6 +5,7 @@ const config: ModuleConfig = {
   "title": "Shorts",
   "description": "1080×1920, 30 fps, H.264 MP4. Ana belgeselden bağımsız kurgu.",
   "stage": 7,
+  "active": true,
   "steps": [
     "render_shorts"
   ],

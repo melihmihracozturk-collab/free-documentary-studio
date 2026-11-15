@@ -160,3 +160,51 @@ def test_no_orphan_last_word():
     cues = R.build_cues([t], words, [(0.0, end)], 42)
     assert all(len(c[2].split()) >= 3 for c in cues), cues           # tek başına "ediyor." kalmaz
     assert all(len(c[2].split("\n")) <= 2 for c in cues)
+
+
+def test_shorts_tempo_policy():
+    assert R.shorts_tempo(55, 60, 1.15) == (1.0, None)                    # sınır içinde: dokunma
+    t, w = R.shorts_tempo(66.19, 60, 1.15)                                # Pompei: 66,2 sn
+    assert w is None and 1.10 < t < 1.13 and 66.19 / t == pytest.approx(59, abs=0.05)
+    t, w = R.shorts_tempo(80, 60, 1.15)                                   # çok uzun: tavan + uyarı
+    assert t == 1.15 and "sınırı aşılıyor" in w
+
+
+def test_vertical_framing_pans_wide_images():
+    assert R.frame_move("zoom_in", R.SHORTS, 3000, 2000, 1) == "pan_right"
+    assert R.frame_move("zoom_in", R.SHORTS, 3000, 2000, 2) == "pan_left"
+    assert R.frame_move("zoom_in", R.SHORTS, 1200, 2000, 1) == "zoom_in"   # dikey görsel: hareket korunur
+    assert R.frame_move("zoom_in", R.DOC, 3000, 2000, 1) == "zoom_in"      # belgesel etkilenmez
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg yok")
+def test_render_shorts_with_tempo(conn, s3, tmp_path):  # noqa: F811
+    """Shorts: 1080x1920 30 fps; ses sınırı aşınca hızlandırılır, altyazı ve sahne zamanları da ölçeklenir."""
+    import subprocess
+    from PIL import Image
+    from fds_worker import storage
+    from .conftest import make_project, steps
+
+    pid, job = make_project(conn)
+    slug = "pompei-son-gunu"
+    conn.execute("update settings set value='4'::jsonb where key='shorts_max_seconds'")
+    conn.execute("update settings set value='2'::jsonb where key='shorts_auto_tempo_max'")
+    wav = tmp_path / "s.wav"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=300:d=4.4", str(wav)], check=True)
+    storage.upload_file(f"projects/{slug}/voiceover/s.wav", wav, "audio/wav")
+    conn.execute("insert into voiceovers (project_id, kind, storage_key, filename, bytes, status, duration_sec) "
+                 "values (%s,'shorts',%s,'s.wav',1,'analyzed',4.4)", (pid, f"projects/{slug}/voiceover/s.wav"))
+    for i, (a, b) in enumerate([(0.0, 2.2), (2.2, 4.4)], 1):
+        img = tmp_path / f"i{i}.jpg"
+        Image.new("RGB", (3000, 2000), (90, 40 * i, 60)).save(img)
+        key = f"projects/{slug}/assets/s{i}.jpg"
+        sha = storage.upload_file(key, img, "image/jpeg")
+        aid = conn.execute("insert into assets (project_id, kind, storage_key, sha256, width, height, status) "
+                           "values (%s,'image',%s,%s,3000,2000,'approved') returning id", (pid, key, sha)).fetchone()["id"]
+        conn.execute("insert into scenes (project_id, kind, idx, voiceover_text, start_sec, end_sec, camera_move, transition, asset_id) "
+                     "values (%s,'shorts',%s,'metin',%s,%s,'zoom_in','crossfade',%s)", (pid, i, a, b, aid))
+    out = R.render_shorts(conn, steps(conn, job)["render_shorts"]).output
+    assert out["tempo"] == pytest.approx(4.4 / 3, abs=0.01)
+    assert out["duration_sec"] == pytest.approx(3.0, abs=0.15)
+    r = conn.execute("select * from renders where project_id=%s and kind='shorts'", (pid,)).fetchone()
+    assert (r["width"], r["height"], float(r["fps"])) == (1080, 1920, 30.0)

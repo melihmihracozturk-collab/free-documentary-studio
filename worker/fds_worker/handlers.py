@@ -28,6 +28,7 @@ def real_handlers() -> dict[str, Handler]:
         out["voiceover_analyze"] = voiceover.analyze
         out["subtitles"] = render.subtitles
         out["render_doc"] = render.render_doc
+        out["render_shorts"] = render.render_shorts
     if llm.configured():
         out.update({
             "research_collect": research.collect,

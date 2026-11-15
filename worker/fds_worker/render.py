@@ -346,7 +346,8 @@ def render_video(conn, step, fmt: Format, out_name: str, tempo: float = 1.0) -> 
     if not v:
         raise RuntimeError("Analiz edilmiş gerçek seslendirme yok")       # (veritabanı kuralı da render'ı engeller)
     visuals.download_selected(conn, p["id"], p["slug"])                   # eksik görselleri tamamla
-    scenes = conn.execute("select s.*, a.storage_key as img_key, a.sha256 as img_sha from scenes s left join assets a "
+    scenes = conn.execute("select s.*, a.storage_key as img_key, a.sha256 as img_sha, a.width as img_w, a.height as img_h "
+                          "from scenes s left join assets a "
                           "on a.id = s.asset_id where s.project_id=%s and s.kind=%s order by s.idx", (p["id"], fmt.kind)).fetchall()
     missing = [s["idx"] for s in scenes if not s["img_key"]]
     if missing:
@@ -360,14 +361,15 @@ def render_video(conn, step, fmt: Format, out_name: str, tempo: float = 1.0) -> 
         tmp = Path(tmp)
         clips = []
         for i, s in enumerate(scenes):
-            key = _clip_key(p["slug"], fmt.kind, s["idx"], s["img_sha"] or s["img_key"], lens[i], s["camera_move"] or "static")
+            move = frame_move(s["camera_move"] or "static", fmt, s["img_w"], s["img_h"], s["idx"])
+            key = _clip_key(p["slug"], fmt.kind, s["idx"], s["img_sha"] or s["img_key"], lens[i], move)
             path = tmp / f"clip{i:03d}.mp4"
             if _exists(key):                                              # kaldığı yerden devam
                 storage.download(key, path)
                 reused += 1
             else:
                 img = storage.download(s["img_key"], tmp / f"img{i:03d}.jpg")
-                render_clip(img, path, lens[i], s["camera_move"] or "static", fmt, seed=s["idx"])
+                render_clip(img, path, lens[i], move, fmt, seed=s["idx"])
                 storage.upload_file(key, path, "video/mp4")
                 rendered += 1
             clips.append(path)
@@ -436,5 +438,42 @@ def _retime_ass(text: str, tempo: float) -> str:
     return re.sub(r"(\d+):(\d{2}):(\d{2})\.(\d{2})", conv, text)
 
 
+def frame_move(move: str, fmt: Format, w: int | None, h: int | None, idx: int) -> str:
+    """Dikey (9:16) kadrajda yatay görselin yalnızca orta şeridi görünür; yakınlaşma yerine görsel boyunca
+    yatay kaydırma yapılarak görselin tamamı gösterilir (dikey kompozisyon)."""
+    if fmt.kind != "shorts" or not w or not h or w / h < 1.15 or move.startswith("pan_l") or move.startswith("pan_r"):
+        return move
+    return "pan_right" if idx % 2 else "pan_left"
+
+
+def shorts_tempo(duration: float, max_seconds: float, tempo_max: float) -> tuple[float, str | None]:
+    """Kullanıcı kararı: Shorts sesi sınırı aşarsa render sırasında hızlandır (en fazla tempo_max).
+    Hedef max_seconds - 1 sn (güvenlik payı). Dönüş: (tempo, uyarı)."""
+    if duration <= max_seconds:
+        return 1.0, None
+    tempo = min(duration / (max_seconds - 1), tempo_max)
+    warn = None if duration / tempo <= max_seconds else (
+        f"Shorts {duration:.1f} sn; en fazla x{tempo_max} hızlandırmayla {duration / tempo:.1f} sn — "
+        f"{max_seconds:.0f} sn sınırı aşılıyor, metni kısaltıp yeniden seslendirin")
+    return round(tempo, 4), warn
+
+
 def render_doc(conn, step) -> StepResult:
     return render_video(conn, step, DOC, "documentary.mp4")
+
+
+def render_shorts(conn, step) -> StepResult:
+    st = {r["key"]: r["value"] for r in conn.execute(
+        "select key, value from settings where key in ('shorts_max_seconds','shorts_auto_tempo_max')").fetchall()}
+    v = conn.execute("select duration_sec from voiceovers where project_id=%s and kind='shorts' and status='analyzed'",
+                     (step["project_id"],)).fetchone()
+    if not v:
+        raise RuntimeError("Analiz edilmiş Shorts seslendirmesi yok")
+    tempo, warn = shorts_tempo(float(v["duration_sec"]), float(st.get("shorts_max_seconds", 60)),
+                               float(st.get("shorts_auto_tempo_max", 1.15)))
+    res = render_video(conn, step, SHORTS, "shorts.mp4", tempo=tempo)
+    if warn:
+        conn.execute("insert into error_logs (project_id, job_id, step_key, level, message) values (%s,%s,%s,'warning',%s)",
+                     (step["project_id"], step["job_id"], step["step_key"], warn))
+        res.output["warning"] = warn
+    return res
