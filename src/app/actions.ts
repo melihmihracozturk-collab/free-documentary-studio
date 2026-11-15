@@ -124,3 +124,77 @@ export async function logout() {
   (await cookies()).delete(SESSION_COOKIE);
   redirect("/login");
 }
+
+// ----------------------------------------------------------------- Stage 4: senaryo düzenleme ve onay
+
+async function projectBySlug(slug: string) {
+  const [p] = await db()<{ id: string }[]>`select id from projects where slug = ${slug}`;
+  if (!p) throw new Error("Proje bulunamadı");
+  return p;
+}
+
+async function scriptLocked(projectId: string) {
+  const [r] = await db()<{ locked: boolean }[]>`
+    select exists (select 1 from scripts s where s.project_id = ${projectId} and s.approved_at is not null
+                    and s.version = (select max(version) from scripts x where x.project_id = s.project_id and x.kind = s.kind)) as locked`;
+  return r.locked;
+}
+
+export async function updateSceneText(slug: string, sceneId: string, text: string): Promise<FormState> {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length < 3) return { error: "Metin boş olamaz" };
+  if (clean.length > 1500) return { error: "Bir sahne en fazla 1500 karakter olabilir" };
+  const p = await projectBySlug(slug);
+  if (await scriptLocked(p.id)) return { error: "Senaryo onaylanmış; düzenlemek için önce onayı geri alın" };
+  const sql = db();
+  const [wpm] = await sql<{ doc: number; shorts: number }[]>`
+    select (select (value #>> '{}')::numeric from settings where key='narration_wpm') doc,
+           (select (value #>> '{}')::numeric from settings where key='shorts_wpm') shorts`;
+  const words = (clean.match(/[\p{L}\p{N}]+/gu) ?? []).length;
+  const [cur] = await sql<{ kind: "doc" | "shorts"; script_id: string }[]>`
+    select kind, script_id from scenes where id = ${sceneId} and project_id = ${p.id}`;
+  if (!cur) return { error: "Sahne bulunamadı" };
+  const rate = cur.kind === "doc" ? wpm.doc : wpm.shorts;
+  await sql`update scenes set voiceover_text = ${clean}, word_count = ${words}, edited_at = now(),
+                   est_duration_sec = round(${words}::numeric / ${rate} * 60, 2)
+             where id = ${sceneId}`;
+  await sql`update scripts s set word_count = t.w, est_seconds = round(t.w::numeric / ${rate} * 60, 1)
+              from (select coalesce(sum(word_count), 0) w from scenes where project_id = ${p.id} and kind = ${cur.kind}) t
+             where s.id = ${cur.script_id}`;
+  revalidatePath("/senaryo");
+  return { ok: "Kaydedildi" };
+}
+
+export async function approveScripts(slug: string): Promise<FormState> {
+  const p = await projectBySlug(slug);
+  const sql = db();
+  const step = await sql<{ id: string }[]>`
+    select s.id from job_steps s join jobs j on j.id = s.job_id
+     where s.project_id = ${p.id} and s.step_key = 'script_review' and s.status = 'waiting_input'
+     order by j.created_at desc limit 1`;
+  if (!step.length) return { error: "Onay bekleyen senaryo adımı yok" };
+  await sql.begin(async (tx) => {
+    await tx`update scripts s set approved_at = now()
+              where s.project_id = ${p.id}
+                and s.version = (select max(version) from scripts x where x.project_id = s.project_id and x.kind = s.kind)`;
+    await tx`select resolve_input_step(${step[0].id}, ${tx.json({ approved_by: "user", at: new Date().toISOString() })})`;
+  });
+  await dispatchWorker(`senaryo onayı: ${slug}`);
+  revalidatePath("/senaryo");
+  revalidatePath("/seslendirme");
+  return { ok: "Senaryo onaylandı; ElevenLabs metinleri hazırlanıyor" };
+}
+
+export async function unapproveScripts(slug: string): Promise<FormState> {
+  const p = await projectBySlug(slug);
+  const sql = db();
+  const [vo] = await sql<{ n: number }[]>`select count(*)::int n from voiceovers where project_id = ${p.id}`;
+  if (vo.n > 0) return { error: "Seslendirme yüklendikten sonra senaryo onayı geri alınamaz (ses ile metin uyuşmaz)" };
+  const [job] = await sql<{ id: string }[]>`select id from jobs where project_id = ${p.id} order by created_at desc limit 1`;
+  await sql.begin(async (tx) => {
+    await tx`update scripts set approved_at = null where project_id = ${p.id}`;
+    await tx`select reset_from_step(${job.id}, 'script_review')`;
+  });
+  revalidatePath("/senaryo");
+  return { ok: "Onay geri alındı; senaryo yeniden düzenlenebilir" };
+}

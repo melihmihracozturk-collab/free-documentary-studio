@@ -1,10 +1,13 @@
 import { ModulePage, type ModuleConfig } from "@/components/ModulePage";
+import { VoiceoverView } from "@/components/VoiceoverView";
 
 const config: ModuleConfig = {
   "title": "Seslendirme",
   "description": "ElevenLabs için metinler ve sizin yüklediğiniz ses dosyalarının analizi.",
   "stage": 4,
+  "active": true,
   "steps": [
+    "script_review",
     "voiceover_texts",
     "voiceover_wait",
     "voiceover_analyze"
@@ -20,5 +23,8 @@ const config: ModuleConfig = {
 
 export default async function Page({ searchParams }: PageProps<"/seslendirme">) {
   const { p } = await searchParams;
-  return <ModulePage config={config} selected={typeof p === "string" ? p : undefined} />;
+  return (
+    <ModulePage config={config} selected={typeof p === "string" ? p : undefined}
+                render={async (proj) => <VoiceoverView projectId={proj.id} slug={proj.slug} />} />
+  );
 }

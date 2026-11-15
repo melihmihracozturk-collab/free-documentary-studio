@@ -20,6 +20,7 @@ export function serviceStatus() {
     { key: "GITHUB_REPO", label: "GitHub repo adı", ok: has("GITHUB_REPO"), stage: 2 },
     { key: "R2_ACCOUNT_ID", label: "Cloudflare R2 hesabı", ok: has("R2_ACCOUNT_ID"), stage: 4 },
     { key: "R2_ACCESS_KEY_ID", label: "Cloudflare R2 erişim anahtarı", ok: has("R2_ACCESS_KEY_ID"), stage: 4 },
-    { key: "GEMINI_API_KEY", label: "Gemini API (worker secret)", ok: has("GEMINI_API_KEY"), stage: 3 },
+    { key: "R2_SECRET_ACCESS_KEY", label: "Cloudflare R2 gizli anahtar", ok: has("R2_SECRET_ACCESS_KEY"), stage: 4 },
+    { key: "R2_BUCKET", label: "Cloudflare R2 bucket adı", ok: has("R2_BUCKET"), stage: 4 },
   ];
 }

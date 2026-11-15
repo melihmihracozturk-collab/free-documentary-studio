@@ -1,5 +1,6 @@
 import { Card, Empty, Stat } from "./ui";
-import { getScripts, type Scene, type Script } from "@/lib/queries";
+import { getClaimsText, getScripts, getStepState, type Scene, type Script } from "@/lib/queries";
+import { SceneEditor } from "./SceneEditor";
 
 const ACT_TR: Record<string, string> = {
   giris: "Çarpıcı giriş", arka_plan: "Tarihsel arka plan", gelisme: "Olayların gelişimi",
@@ -55,7 +56,9 @@ function SceneTable({ scenes }: { scenes: Scene[] }) {
   );
 }
 
-function ScriptCard({ title, script, scenes, slug }: { title: string; script: Script | null; scenes: Scene[]; slug: string }) {
+function ScriptCard({ title, script, scenes, slug, claims, canApprove, showApprove }: {
+  title: string; script: Script | null; scenes: Scene[]; slug: string; claims: string; canApprove: boolean; showApprove: boolean;
+}) {
   if (!script) return <Card title={title}><Empty>Henüz yazılmadı.</Empty></Card>;
   const errs = script.validation.errors ?? [];
   return (
@@ -68,13 +71,22 @@ function ScriptCard({ title, script, scenes, slug }: { title: string; script: Sc
           <ul className="mt-1 list-disc pl-4">{errs.slice(0, 8).map((e) => <li key={e}>{e}</li>)}</ul>
         </div>
       )}
-      <SceneTable scenes={scenes} />
+      <SceneEditor slug={slug} claims={claims} approved={Boolean(script.approved_at)} canApprove={canApprove && showApprove}
+                   scenes={scenes.map((x) => ({ id: x.id, kind: x.kind, idx: x.idx, act: x.act, voiceover_text: x.voiceover_text,
+                     claim_refs: x.claim_refs, visual_description: x.visual_description, word_count: x.word_count,
+                     est_duration_sec: x.est_duration_sec }))} />
+      <details className="mt-4">
+        <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-300">Kamera, geçiş, müzik ve efekt planı</summary>
+        <div className="mt-2"><SceneTable scenes={scenes} /></div>
+      </details>
     </Card>
   );
 }
 
 export async function ScriptView({ projectId, slug }: { projectId: string; slug: string }) {
-  const { doc, shorts, docScenes, shortsScenes } = await getScripts(projectId);
+  const [{ doc, shorts, docScenes, shortsScenes }, claims, review] = await Promise.all([
+    getScripts(projectId), getClaimsText(projectId), getStepState(projectId, "script_review")]);
+  const canApprove = review?.status === "waiting_input";
   if (!doc && !shorts) {
     return <Card title="Senaryo"><Empty>Senaryo henüz yazılmadı. Araştırma onaylandıktan sonra bulut işçisi yazacak.</Empty></Card>;
   }
@@ -86,8 +98,13 @@ export async function ScriptView({ projectId, slug }: { projectId: string; slug:
         <Stat label="Shorts sahnesi" value={shortsScenes.length} />
         <Stat label="Tahmini Shorts süresi" value={shorts?.est_seconds ? `${Math.round(Number(shorts.est_seconds))} sn` : "—"} hint={`${shorts?.word_count ?? 0} kelime`} />
       </div>
-      <ScriptCard title="Ana belgesel" script={doc} scenes={docScenes} slug={slug} />
-      <ScriptCard title="Shorts" script={shorts} scenes={shortsScenes} slug={slug} />
+      {review?.status === "waiting_input" && (
+        <p className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-200">
+          Senaryo onayınızı bekliyor. Sahneleri okuyun, gerekirse düzenleyin, sonra onaylayın. ElevenLabs metinleri onaylı hâlden üretilir.
+        </p>
+      )}
+      <ScriptCard title="Ana belgesel" script={doc} scenes={docScenes} slug={slug} claims={claims} canApprove={canApprove} showApprove />
+      <ScriptCard title="Shorts" script={shorts} scenes={shortsScenes} slug={slug} claims={claims} canApprove={canApprove} showApprove={false} />
     </>
   );
 }

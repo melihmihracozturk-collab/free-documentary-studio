@@ -12,7 +12,7 @@ Mimari ve servis seçimleri: [`docs/STAGE1_MIMARI_RAPORU.md`](docs/STAGE1_MIMARI
 | 1 | Mimari ve ücretsiz servis araştırması | ✅ |
 | 2 | Panel, veritabanı şeması, iş kuyruğu, bulut işçisi iskeleti | ✅ |
 | 3 | Araştırma ve senaryo motoru | ✅ (gerçek LLM ile henüz çalıştırılmadı) |
-| 4 | Seslendirme yükleme ve analiz (R2) | ⏳ |
+| 4 | Senaryo onayı, ElevenLabs metinleri, ses yükleme (R2) ve analiz (faster-whisper) | ✅ (gerçek R2 ile henüz denenmedi) |
 | 5 | Görsel arşiv ve sahne yönetimi | ⏳ |
 | 6 | Bulut video montaj motoru (FFmpeg) | ⏳ |
 | 7 | Shorts motoru | ⏳ |
@@ -50,6 +50,13 @@ worker/                GitHub Actions'ta çalışan Python işçisi
 5. **Shorts:** bağımsız 45–60 sn senaryo; ilk sahne ≤10 kelimelik kanca.
 
 LLM yanıtları veritabanında önbelleğe alınır; bir adımı yeniden çalıştırmak kotayı tekrar harcamaz.
+
+## Seslendirme (Stage 4)
+
+1. **Senaryo onayı:** Senaryo sayfasında sahneler düzenlenir. Kod iki tür uyarıyı canlı gösterir: kaynakta olmayan sayılar (Türkçe yazıyla sayılar dahil) ve tekrarlanan bilgiler. Kaynakta olmayan *ayrıntıları* kod yakalayamaz; son okuma kullanıcınındır.
+2. **ElevenLabs metinleri:** `documentary_voiceover.txt` ve `shorts_voiceover.txt` yalnızca okunacak cümlelerden oluşur, sahneler arasında boş satır vardır.
+3. **Yükleme:** Tarayıcı dosyanın SHA-256 özetini hesaplar, dosyayı imzalı URL ile doğrudan Cloudflare R2'ye yükler. Sunucu boyutu doğrular.
+4. **Analiz (bulut işçisi):** ffprobe ile süre, silencedetect ile duraklamalar, faster-whisper ile kelime zamanları ölçülür. Senaryo ile hizalanarak her sahnenin gerçek başlangıç ve bitiş zamanı çıkarılır. Ses ile metin %60'tan az eşleşirse ya da süre hedef dışındaysa uyarı verilir.
 
 ## Kurulum (tamamı tarayıcıdan)
 

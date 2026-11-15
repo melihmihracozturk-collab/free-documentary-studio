@@ -24,7 +24,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r worker/requirements.txt -r worker/requirements-dev.txt
+      - run: command -v ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
+      - run: pip install -r worker/requirements.txt -r worker/requirements-dev.txt -r worker/requirements-audio.txt
       - run: python -m pytest -q worker/tests
         env:
           TEST_ADMIN_DATABASE_URL: postgresql://postgres@localhost:5432/postgres
@@ -40,4 +41,5 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm test
       - run: npm run build

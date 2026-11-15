@@ -166,9 +166,12 @@ def test_quote_matching():
 def test_no_llm_key_no_handlers(monkeypatch):
     for k in ("GEMINI_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "FDS_FAKE_LLM"):
         monkeypatch.delenv(k, raising=False)
-    assert H.registry(False) == {}
+    for k in ("R2_ACCOUNT_ID", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"):
+        monkeypatch.delenv(k, raising=False)
+    assert set(H.registry(False)) == {"voiceover_texts"}           # LLM/R2 gerektirmeyen tek adım
     monkeypatch.setenv("GEMINI_API_KEY", "x")
-    assert set(H.registry(False)) == {"research_collect", "research_verify", "research_report", "script_doc", "script_shorts"}
+    assert set(H.registry(False)) == {"voiceover_texts", "research_collect", "research_verify", "research_report",
+                                      "script_doc", "script_shorts"}
 
 
 def test_research_and_script_pipeline(db_url, conn, fake):
@@ -205,7 +208,7 @@ def test_research_and_script_pipeline(db_url, conn, fake):
     run(db_url, 1, dry_run=False, once=False)
     s = steps(conn, job)
     assert s["script_doc"]["status"] == "done" and s["script_shorts"]["status"] == "done"
-    assert s["visual_plan"]["status"] == "pending"                                           # Stage 5 işleyicisi yok
+    assert s["script_review"]["status"] == "waiting_input"                                   # senaryo onayı bekleniyor
     out = s["script_doc"]["output"]
     assert out["validation_errors"] == [] and 25 <= out["scenes"] <= 40
     assert 10 <= out["est_minutes"] * 1.0 <= 12.2

@@ -14,7 +14,7 @@ def job_status(conn, job):
 def test_create_pipeline_has_all_steps(conn):
     _, job = make_project(conn)
     s = steps(conn, job)
-    assert len(s) == 15
+    assert len(s) == 16
     assert all(r["status"] == "pending" for r in s.values())
     assert job_status(conn, job) == "queued"
 
@@ -36,8 +36,15 @@ def test_full_flow_with_gates(db_url, conn):
     assert s["research_review"]["status"] == "waiting_input"
     assert job_status(conn, job) == "waiting_input"
 
-    # 2) Onay → senaryo ve metinler, seslendirme beklemede durur.
+    # 2) Onay → senaryolar yazılır, senaryo onayında durur.
     assert conn.execute("select resolve_input_step(%s) as ok", (s["research_review"]["id"],)).fetchone()["ok"]
+    run(db_url, 1, dry_run=True, once=False)
+    s = steps(conn, job)
+    assert s["script_shorts"]["status"] == "done" and s["script_review"]["status"] == "waiting_input"
+    assert s["visual_plan"]["status"] == "pending"                  # görsel plan artık seslendirmeden sonra
+
+    # 3) Senaryo onayı → ElevenLabs metinleri, seslendirme beklemede durur.
+    conn.execute("select resolve_input_step(%s)", (s["script_review"]["id"],))
     run(db_url, 1, dry_run=True, once=False)
     s = steps(conn, job)
     assert s["voiceover_texts"]["status"] == "done"
@@ -66,6 +73,8 @@ def test_full_flow_with_gates(db_url, conn):
 def _advance_to_render(db_url, conn, pid, job):
     run(db_url, 1, dry_run=True, once=False)
     conn.execute("select resolve_input_step(%s)", (steps(conn, job)["research_review"]["id"],))
+    run(db_url, 1, dry_run=True, once=False)
+    conn.execute("select resolve_input_step(%s)", (steps(conn, job)["script_review"]["id"],))
     run(db_url, 1, dry_run=True, once=False)
     for kind in ("doc", "shorts"):
         conn.execute("insert into voiceovers (project_id, kind, storage_key, filename, bytes, status) "

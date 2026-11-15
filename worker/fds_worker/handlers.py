@@ -21,9 +21,11 @@ Handler = Callable[[Any, dict], StepResult]
 
 def real_handlers() -> dict[str, Handler]:
     """Gerçek işleyiciler. LLM gerektirenler yalnızca bir LLM anahtarı tanımlıysa kaydedilir."""
-    from . import llm, research, script
+    from . import llm, research, script, storage, voiceover
 
-    out: dict[str, Handler] = {}
+    out: dict[str, Handler] = {"voiceover_texts": voiceover.texts}
+    if storage.configured():
+        out["voiceover_analyze"] = voiceover.analyze
     if llm.configured():
         out.update({
             "research_collect": research.collect,
@@ -52,8 +54,7 @@ def _dry_run(conn, step: dict) -> StepResult:
 
 
 DRY_RUN_KEYS = [
-    "research_collect", "research_verify", "research_report", "script_doc", "script_shorts",
-    "visual_plan", "voiceover_texts", "voiceover_analyze", "asset_match", "subtitles",
+    "research_collect", "research_verify", "research_report", "script_doc", "script_shorts", "voiceover_texts", "voiceover_analyze", "visual_plan", "asset_match", "subtitles",
     "render_doc", "render_shorts", "preview_ready",
 ]
 

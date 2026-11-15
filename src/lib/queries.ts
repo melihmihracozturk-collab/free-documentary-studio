@@ -176,7 +176,7 @@ export type Scene = {
   on_screen_text: string | null; word_count: number | null;
 };
 export type Script = {
-  id: string; kind: "doc" | "shorts"; version: number; word_count: number | null; est_seconds: string | null;
+  id: string; kind: "doc" | "shorts"; version: number; approved_at: Date | null; word_count: number | null; est_seconds: string | null;
   voiceover_text: string | null; content: { title?: string; logline?: string }; validation: { errors?: string[]; ok?: boolean };
   created_at: Date;
 };
@@ -200,7 +200,7 @@ export async function getResearch(projectId: string) {
 export async function getScripts(projectId: string) {
   const sql = db();
   const scripts = await sql<Script[]>`
-    select distinct on (kind) id, kind, version, word_count, est_seconds, voiceover_text, content, validation, created_at
+    select distinct on (kind) id, kind, version, approved_at, word_count, est_seconds, voiceover_text, content, validation, created_at
       from scripts where project_id = ${projectId} order by kind, version desc`;
   const scenes = await sql<Scene[]>`
     select id, kind, idx, act, est_duration_sec, voiceover_text, visual_description, camera_move, transition, music, sfx,
@@ -212,4 +212,31 @@ export async function getScripts(projectId: string) {
     docScenes: scenes.filter((s) => s.kind === "doc"),
     shortsScenes: scenes.filter((s) => s.kind === "shorts"),
   };
+}
+
+export type Voiceover = {
+  id: string; kind: "doc" | "shorts"; storage_key: string; filename: string; mime: string | null; bytes: string;
+  sha256: string | null; duration_sec: string | null; coverage: string | null; status: "uploaded" | "analyzing" | "analyzed" | "failed";
+  analysis: { duration_sec?: number; coverage?: number; wpm?: number; pauses?: number; longest_pause_sec?: number;
+    warnings?: string[]; scene_times?: [number, number][] } | null;
+  uploaded_at: Date;
+};
+
+export async function getVoiceovers(projectId: string) {
+  return db()<Voiceover[]>`select id, kind, storage_key, filename, mime, bytes, sha256, duration_sec, coverage, status, analysis, uploaded_at
+                           from voiceovers where project_id = ${projectId} order by kind`;
+}
+
+/** Senaryo düzenleme ekranı için iddia metinleri (sayı denetimi panelde yapılır). */
+export async function getClaimsText(projectId: string) {
+  const rows = await db()<{ ref: string; status: string; text: string; event_date: string | null }[]>`
+    select ref, status, text, event_date from claims where project_id = ${projectId} and status in ('verified','weak','conflict')`;
+  return rows.map((c) => `${c.ref} [${c.status}]${c.event_date ? ` (${c.event_date})` : ""} ${c.text}`).join("\n");
+}
+
+export async function getStepState(projectId: string, stepKey: string) {
+  const [s] = await db()<{ id: string; status: StepStatus; job_id: string }[]>`
+    select s.id, s.status, s.job_id from job_steps s join jobs j on j.id = s.job_id
+     where s.project_id = ${projectId} and s.step_key = ${stepKey} order by j.created_at desc limit 1`;
+  return s ?? null;
 }
