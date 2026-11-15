@@ -26,6 +26,7 @@ jobs:
           python-version: "3.12"
       - run: command -v ffmpeg || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
       - run: pip install -r worker/requirements.txt -r worker/requirements-dev.txt -r worker/requirements-audio.txt
+      - run: python -m compileall -q worker/fds_worker
       - run: python -m pytest -q worker/tests
         env:
           TEST_ADMIN_DATABASE_URL: postgresql://postgres@localhost:5432/postgres
