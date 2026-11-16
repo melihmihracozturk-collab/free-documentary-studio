@@ -2,8 +2,8 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Check, Pencil } from "lucide-react";
-import { approveScripts, unapproveScripts, updateSceneText } from "@/app/actions";
+import { AlertTriangle, Check, Pencil, Trash2 } from "lucide-react";
+import { approveScripts, deleteScene, unapproveScripts, updateSceneText } from "@/app/actions";
 import { unsupportedNumbers } from "@/lib/numbers";
 import { btnGhost, btnPrimary } from "./ui";
 
@@ -96,9 +96,15 @@ export function SceneEditor({ slug, scenes, claims, approved, canApprove }: {
                   <span><span className="font-mono text-zinc-300">#{s.idx}</span> · {s.word_count} kelime · ~{Number(s.est_duration_sec ?? 0).toFixed(0)} sn
                     {s.claim_refs.length > 0 && <span className="ml-2 font-mono">{s.claim_refs.join(" ")}</span>}</span>
                   {!approved && !isEditing && (
-                    <button className="flex items-center gap-1 hover:text-zinc-200" onClick={() => setEditing(s.id)} aria-label={`Sahne ${s.idx} düzenle`}>
-                      <Pencil size={13} /> Düzenle
-                    </button>
+                    <span className="flex items-center gap-3">
+                      <button className="flex items-center gap-1 hover:text-zinc-200" onClick={() => setEditing(s.id)} aria-label={`Sahne ${s.idx} düzenle`}>
+                        <Pencil size={13} /> Düzenle
+                      </button>
+                      <button className="flex items-center gap-1 hover:text-rose-300" disabled={pending} aria-label={`Sahne ${s.idx} sil`}
+                              onClick={() => { if (window.confirm(`Sahne ${s.idx} silinsin mi?`)) act(() => deleteScene(slug, s.id)); }}>
+                        <Trash2 size={13} /> Sil
+                      </button>
+                    </span>
                   )}
                 </div>
                 {isEditing ? (

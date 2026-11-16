@@ -248,3 +248,27 @@ export async function unapproveVisuals(slug: string): Promise<FormState> {
   revalidatePath("/gorseller");
   return { ok: "Görsel onayı geri alındı" };
 }
+
+export async function deleteScene(slug: string, sceneId: string): Promise<FormState> {
+  const p = await projectBySlug(slug);
+  if (await scriptLocked(p.id)) return { error: "Senaryo onaylanmış; silmek için önce onayı geri alın" };
+  const sql = db();
+  const [sc] = await sql<{ kind: "doc" | "shorts"; idx: number; script_id: string }[]>`
+    select kind, idx, script_id from scenes where id = ${sceneId} and project_id = ${p.id}`;
+  if (!sc) return { error: "Sahne bulunamadı" };
+  const [cnt] = await sql<{ n: number }[]>`select count(*)::int n from scenes where project_id = ${p.id} and kind = ${sc.kind}`;
+  if (cnt.n <= 3) return { error: "En az 3 sahne kalmalı" };
+  const [wpm] = await sql<{ v: number }[]>`
+    select (value #>> '{}')::numeric v from settings where key = ${sc.kind === "doc" ? "narration_wpm" : "shorts_wpm"}`;
+  await sql.begin(async (tx) => {
+    await tx`delete from scenes where id = ${sceneId}`;
+    // Sıra numaralarını boşluksuz yeniden ver (benzersiz kısıt nedeniyle iki adımda)
+    await tx`update scenes set idx = -idx where project_id = ${p.id} and kind = ${sc.kind} and idx > ${sc.idx}`;
+    await tx`update scenes set idx = -idx - 1 where project_id = ${p.id} and kind = ${sc.kind} and idx < 0`;
+    await tx`update scripts s set word_count = t.w, est_seconds = round(t.w::numeric / ${wpm?.v ?? 105} * 60, 1)
+               from (select coalesce(sum(word_count), 0) w from scenes where project_id = ${p.id} and kind = ${sc.kind}) t
+              where s.id = ${sc.script_id}`;
+  });
+  revalidatePath("/senaryo");
+  return { ok: `Sahne ${sc.idx} silindi` };
+}
