@@ -36,8 +36,15 @@ FIXTURES = [
 ]
 
 
+_SCENE_N = [0]
+
+
 def scene(text_words: int, refs):
-    return {"voiceover": " ".join(["kelime"] * text_words), "visual_description": "Vezüv tablosu",
+    # Her sahne farklı kelimelerden oluşur (gerçek senaryolar gibi); tekrar ayıklayıcı bunları silmemeli
+    _SCENE_N[0] += 1
+    n = _SCENE_N[0]
+    letters = lambda x: "".join("abcdefghijklmnoprstuvyz"[int(c)] for c in str(x))   # yalnızca harf (sayı denetimine takılmaz)
+    return {"voiceover": " ".join(f"q{letters(n)}w{letters(k)}" for k in range(text_words)), "visual_description": "Vezüv tablosu",
             "search_keywords": ["Vesuvius painting"], "camera_move": "zoom_in", "transition": "crossfade",
             "music": "gergin yaylılar", "sfx": "uzak gök gürültüsü", "on_screen_text": None, "claim_refs": refs}
 
@@ -336,3 +343,62 @@ def test_budget_keeps_academic_sources():
     kept = research.select_sources(long_wiki + papers, ["Constantinople"])
     assert sum(1 for k in kept if k.source_type == "academic") == 6        # akademik kaynaklar korunur
     assert sum(len(k.text) for k in kept if k.source_type == "encyclopedia") <= research.TYPE_BUDGET["encyclopedia"]
+
+
+def test_dedupe_real_fetih_repeats():
+    sc = lambda t, refs: {"voiceover": t, "claim_refs": refs}
+    scenes = [
+        sc("Mayıs ayının sonuna doğru azalan kaynaklar ve dış yardım gelmemesi büyük bir gerginlik yarattı. "
+           "Komutan Giustiniani ile başbakan Notaras arasında sert tartışmalar çıktı.", ["C20"]),
+        sc("Mayıs ayının son günlerinde içerideki gıda ve mühimmat hızla tükeniyordu. Dışarıdan hiçbir yardımın gelmemesi "
+           "komutanlar arasında büyük bir gerilim yaratmıştı. Komutan Giustiniani ile başbakan Notaras arasında sert "
+           "tartışmalar yaşandı.", ["C20"]),
+        sc("Yirmi iki nisan gecesi büyük gemiler karadan kaydırılarak Haliç'in sularına indirildi.", ["C10"]),
+        sc("Aradan geçen uzun yılların ardından büyük imparator yaşama veda ediyordu. Sultan İkinci Mehmed üç Mayıs "
+           "bin dört yüz seksen birde hayata gözlerini yumdu.", ["C41"]),
+        sc("Yıllar hızla akıp gitti ve büyük hükümdar yaşama veda etti. Sultan İkinci Mehmed üç Mayıs bin dört yüz "
+           "seksen birde kırk dokuz yaşında hayatını kaybetmiştir.", ["C41", "C42"]),
+    ]
+    out, notes = script.dedupe_scenes(scenes, 0)
+    assert len(out) == 3, [x["voiceover"][:40] for x in out]           # Notaras ve Fatih'in ölümü tekrarları kalkar
+    texts = " ".join(x["voiceover"] for x in out)
+    assert texts.count("Notaras") == 1 and texts.count("seksen birde") == 1
+    assert "karadan" in texts                                            # farklı bilgi korunur
+    # Uzunluk sınırı: tekrarları silmek alt sınırın altına düşürecekse durur
+    out2, notes2 = script.dedupe_scenes(scenes, 10_000)
+    assert len(out2) == 5 and "durdu" in notes2[-1]
+
+
+def test_dedupe_paraphrase_with_same_claims():
+    sc = lambda t, refs: {"voiceover": t, "claim_refs": refs}
+    a = sc("Venedikli gözlemci Nicolò Barbaro gibi bazı kaynaklar onun korkudan kaçtığını iddia etti.", ["C76"])
+    b = sc("Nicolò Barbaro bu kaçış iddiasını günlüğüne büyük bir suçlama olarak yazmıştı.", ["C76"])
+    c = sc("Ancak genel tarih bu olayı ağır bir yaralanma olarak kaydetti.", ["C75"])
+    out, _ = script.dedupe_scenes([a, b, c], 0)
+    assert out == [a, c]                                                 # b yeni bilgi getirmiyor
+
+
+def test_dedupe_removes_same_claim_repeat():
+    sc = lambda t, refs: {"voiceover": t, "claim_refs": refs}
+    out, _ = script.dedupe_scenes([sc("Fatih kırk dokuz yaşında öldü ve tarihe geçti büyük hükümdar.", ["C41"]),
+                                   sc("Büyük hükümdar kırk dokuz yaşında hayatını kaybetti ve tarihe geçti.", ["C41"])], 0)
+    assert len(out) == 1
+
+
+def test_report_style_detection():
+    assert script.report_style("İstanbul fethedilmiş ve bu olay sonunu getirmiştir. İmparatorun ölüm şekli tartışılmaktadır.")
+    assert script.report_style("Konstantin'in ölümü konusunda çelişki vardır; genel kabul şehit olduğu yönündedir.")
+    assert not script.report_style("Surlar sarsıldı. Gemiler karadan Haliç'e indirildi. Şehir sustu.")
+
+
+def test_extend_rejects_insert_without_new_claims():
+    sc = lambda t, refs: {"voiceover": t, "claim_refs": refs, "_act": "gelisme"}
+    scenes = [sc("Bir sahne metni burada yer alıyor.", ["C1"]), sc("İkinci sahne metni burada.", ["C2"])]
+    out, rej = script.apply_edits(scenes, {"insert_after": [
+        {"scene": 1, "new_scene": {"voiceover": "Aynı bilgi tekrar anlatılıyor.", "claim_refs": ["C1"]}},
+        {"scene": 2, "new_scene": {"voiceover": "Yepyeni bir bilgi anlatılıyor.", "claim_refs": ["C7"]}},
+        {"scene": 2, "new_scene": {"voiceover": "Kaynaksız bir sahne.", "claim_refs": []}}]}, "C1 x C2 y C7 z", guard=True,
+        new_claims_only=True)
+    assert [x["voiceover"] for x in out] == ["Bir sahne metni burada yer alıyor.", "İkinci sahne metni burada.",
+                                            "Yepyeni bir bilgi anlatılıyor."]
+    assert len(rej) == 2

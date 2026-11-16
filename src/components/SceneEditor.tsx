@@ -17,6 +17,9 @@ const ACT_TR: Record<string, string> = {
   donum_noktasi: "Kritik dönüm noktası", sonuclar: "Sonuçlar", kapanis: "Güçlü kapanış", shorts: "Shorts",
 };
 const HEDGES = /(kaynaklara göre|anlatılana göre|araştırmalara göre|uzmanlara göre|bazı kaynaklara göre)/gi;
+// Rapor/ansiklopedi dili (worker/fds_worker/script.py report_style ile aynı kural)
+const REPORT = /\p{L}+(mıştır|miştir|muştur|müştür|maktadır|mektedir)(?=[\s.,;]|$)/giu;
+const reportStyle = (t: string) => (t.match(REPORT)?.length ?? 0) >= 2 || /çelişki vardır|genel kabul/i.test(t);
 
 /** Kodla hesaplanabilen uyarılar. Kaynakta olmayan AYRINTILARI (ör. "kılıçlar çekildi") kod yakalayamaz: son okuma sizde. */
 function flagsFor(scenes: EditableScene[], claims: string) {
@@ -30,6 +33,7 @@ function flagsFor(scenes: EditableScene[], claims: string) {
     const rep = s.claim_refs.filter((r) => (refScenes.get(r) ?? []).length > 1)
       .map((r) => `${r} (sahne ${refScenes.get(r)!.filter((i) => i !== s.idx).join(", ")})`);
     if (rep.length) f.push(`Aynı bilgi başka sahnede de var: ${rep.join("; ")}`);
+    if (reportStyle(s.voiceover_text)) f.push("Rapor dili (-mıştır/-mektedir): anlatım diline çevirin (ör. 'yıkılmıştır' → 'yıkıldı')");
     if (hedgeTotal > 3 && HEDGES.test(s.voiceover_text)) f.push(`"…göre" kalıbı senaryoda ${hedgeTotal} kez geçiyor (en fazla 3 önerilir)`);
     HEDGES.lastIndex = 0;
     return [s.id, f];
