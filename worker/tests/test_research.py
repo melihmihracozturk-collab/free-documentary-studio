@@ -326,3 +326,13 @@ def test_media_works_are_not_sources():
     assert not research.is_media_work(makale)                     # akademik kaynaklara uygulanmaz
     kept = research.select_sources([dizi, tarih, film], ["Constantinople"])
     assert [k.title for k in kept] == ["Fall of Constantinople"]
+
+
+def test_budget_keeps_academic_sources():
+    long_wiki = [S.Source(f"w{i}", f"Constantinople {i}", "Wikipedia", "encyclopedia", "wikipedia", "Constantinople " * 3000)
+                 for i in range(4)]                                    # her biri ~30k karakter (kırpılınca)
+    papers = [S.Source(f"a{i}", f"Paper {i}", f"Journal {i}", "academic", "crossref", "Constantinople siege 1453. " * 120)
+              for i in range(6)]
+    kept = research.select_sources(long_wiki + papers, ["Constantinople"])
+    assert sum(1 for k in kept if k.source_type == "academic") == 6        # akademik kaynaklar korunur
+    assert sum(len(k.text) for k in kept if k.source_type == "encyclopedia") <= research.TYPE_BUDGET["encyclopedia"]

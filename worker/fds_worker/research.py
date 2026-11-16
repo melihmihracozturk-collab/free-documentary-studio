@@ -79,6 +79,7 @@ def _relevant(src: S.Source, keywords: list[str]) -> bool:
 # Kaynak türüne göre metin üst sınırı ve toplam bütçe (LLM kotasını korur: ~4-5 çıkarma çağrısı)
 TYPE_CAP = {"encyclopedia": 30000, "academic": 4000, "archive": 3000}
 TOTAL_BUDGET = 110000
+TYPE_BUDGET = {"encyclopedia": 55000, "academic": 40000, "archive": 15000}
 TYPE_PRIORITY = {"encyclopedia": 0, "academic": 1, "archive": 2}
 
 
@@ -105,13 +106,15 @@ def select_sources(found: list[S.Source], keywords: list[str]) -> list[S.Source]
         seen |= keys
         s.text = s.text[:TYPE_CAP.get(s.source_type, 4000)]
         unique.append(s)
-    # Öncelik: ansiklopedi (iskelet) → akademik → arşiv; aynı türde bulunma sırası korunur
-    unique.sort(key=lambda s: TYPE_PRIORITY.get(s.source_type, 3))
+    # Tür başına bütçe: uzun ansiklopedi maddeleri akademik kaynakları dışarıda bırakamaz (1453'te 22 → 4 kaynak olmuştu)
+    used = {t: 0 for t in TYPE_BUDGET}
     out, total = [], 0
     for s in unique:
-        if total + len(s.text) > TOTAL_BUDGET:
+        t = s.source_type if s.source_type in TYPE_BUDGET else "archive"
+        if used[t] + len(s.text) > TYPE_BUDGET[t] or total + len(s.text) > TOTAL_BUDGET:
             continue
         out.append(s)
+        used[t] += len(s.text)
         total += len(s.text)
     return out
 
