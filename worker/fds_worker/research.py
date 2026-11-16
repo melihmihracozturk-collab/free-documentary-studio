@@ -77,9 +77,21 @@ def _relevant(src: S.Source, keywords: list[str]) -> bool:
 
 
 # Kaynak türüne göre metin üst sınırı ve toplam bütçe (LLM kotasını korur: ~4-5 çıkarma çağrısı)
-TYPE_CAP = {"encyclopedia": 20000, "academic": 4000, "archive": 3000}
+TYPE_CAP = {"encyclopedia": 30000, "academic": 4000, "archive": 3000}
 TOTAL_BUDGET = 110000
 TYPE_PRIORITY = {"encyclopedia": 0, "academic": 1, "archive": 2}
+
+
+MEDIA_WORK = re.compile(
+    r"\b(is|was) an? (\d{4} )?(\w+ ){0,4}(film|movie|television series|tv series|docudrama|documentary series|miniseries|"
+    r"video game|novel|play|opera|musical|song|album|anime|comic)\b"
+    r"|\b(dizisidir|filmidir|belgesel dizisi|bilgisayar oyunu|romanıdır)\b", re.I)
+
+
+def is_media_work(src: S.Source) -> bool:
+    """Film, dizi, oyun, roman gibi eserleri anlatan ansiklopedi maddeleri tarih kaynağı değildir (ör. Netflix
+    belgesel-dizisi 'Rise of Empires: Ottoman' 1453 araştırmasına kaynak olarak girmişti)."""
+    return src.source_type == "encyclopedia" and bool(MEDIA_WORK.search(src.text[:600]))
 
 
 def select_sources(found: list[S.Source], keywords: list[str]) -> list[S.Source]:
@@ -88,7 +100,7 @@ def select_sources(found: list[S.Source], keywords: list[str]) -> list[S.Source]
     for s in found:
         keys = {s.url, s.extra.get("doi"), (s.collector, _norm(s.title))}
         keys.discard(None)
-        if keys & seen or not _relevant(s, keywords):
+        if keys & seen or not _relevant(s, keywords) or is_media_work(s):
             continue
         seen |= keys
         s.text = s.text[:TYPE_CAP.get(s.source_type, 4000)]

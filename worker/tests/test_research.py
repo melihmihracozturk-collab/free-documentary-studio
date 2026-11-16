@@ -308,3 +308,21 @@ def test_guarded_edits():
     assert out[1]["voiceover"].startswith("Patlama tam")          # kısaltma reddedildi
     assert len(out) == 2                                          # sahne 3 silindi (C2 başka sahnede var), sahne 1 silinmedi
     assert len(rej) == 4                                          # 60, kısaltma, silme(1), ekleme(300)
+
+
+def test_media_works_are_not_sources():
+    dizi = S.Source("u", "Rise of Empires: Ottoman", "Wikipedia", "encyclopedia", "wikipedia",
+                    "Rise of Empires: Ottoman is a Turkish historical docudrama television series created for Netflix. "
+                    "It depicts the Fall of Constantinople in 1453 and Mehmed II. " * 3)
+    tarih = S.Source("u2", "Fall of Constantinople", "Wikipedia", "encyclopedia", "wikipedia",
+                     "The Fall of Constantinople was the capture of the capital of the Byzantine Empire by the Ottoman Empire "
+                     "in 1453. Constantinople was besieged by Mehmed II. " * 3)
+    film = S.Source("u3", "Fetih 1453", "Wikipedia", "encyclopedia", "wikipedia",
+                    "Fetih 1453 is a 2012 Turkish epic action film about the Fall of Constantinople. " * 3)
+    makale = S.Source("u4", "Ottoman artillery", "J", "academic", "crossref",
+                      "This article studies the television series coverage... Constantinople 1453 artillery. " * 3)
+    assert research.is_media_work(dizi) and research.is_media_work(film)
+    assert not research.is_media_work(tarih)
+    assert not research.is_media_work(makale)                     # akademik kaynaklara uygulanmaz
+    kept = research.select_sources([dizi, tarih, film], ["Constantinople"])
+    assert [k.title for k in kept] == ["Fall of Constantinople"]

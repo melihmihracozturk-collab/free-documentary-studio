@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 from . import http
 
-MAX_TEXT = 20000
+MAX_TEXT = 30000
 MIN_TEXT = 200
 
 
