@@ -14,6 +14,7 @@ from urllib.parse import quote
 from . import http
 
 MAX_TEXT = 30000
+WIKI_MAX_TEXT = 150000          # madde tamamı alınır; araştırma adımı içinden dengeli örneklem seçer
 MIN_TEXT = 200
 
 
@@ -47,7 +48,7 @@ def wikipedia(query: str, lang: str = "en", limit: int = 3) -> list[Source]:
             text = (p.get("extract") or "")
             # Kaynakça / dış bağlantılar bölümlerini at
             text = re.split(r"\n==\s*(References|See also|External links|Kaynakça|Dış bağlantılar|Ayrıca bakınız|Notlar)\s*==", text)[0]
-            text = re.sub(r"\n+", "\n", text).strip()[:MAX_TEXT]
+            text = re.sub(r"\n+", "\n", text).strip()[:WIKI_MAX_TEXT]
             if len(text) >= MIN_TEXT:
                 out.append(Source(url=f"https://{lang}.wikipedia.org/wiki/{quote(p['title'].replace(' ', '_'))}",
                                   title=p["title"], publisher="Wikipedia", source_type="encyclopedia",

@@ -99,6 +99,35 @@ def is_media_work(src: S.Source) -> bool:
     return src.source_type == "encyclopedia" and bool(MEDIA_WORK.search(src.text[:600]))
 
 
+def spread_sample(text: str, cap: int, intro: int = 3000) -> str:
+    """Uzun metinden dengeli örneklem: giriş + metnin tamamına eşit aralıklarla yayılmış paragraflar (sıra korunur).
+
+    Yalnızca baştan kırpmak, uzun maddelerin ilk dönemlerini alıp sonrasını atıyordu (İttihat ve Terakki
+    maddesinde 1914-1918 hiç girmemişti). Paragraflar bütün kalır, böylece alıntı doğrulaması bozulmaz.
+    """
+    if len(text) <= cap:
+        return text
+    paras = [x for x in text.split("\n") if x.strip()]
+    head, i = [], 0
+    while i < len(paras) and sum(len(x) + 1 for x in head) + len(paras[i]) <= min(intro, cap):
+        head.append(paras[i])
+        i += 1
+    rest = paras[i:]
+    budget = cap - sum(len(x) + 1 for x in head)
+    if not rest or budget <= 0:
+        return "\n".join(head)[:cap] or text[:cap]
+    avg = max(1, sum(len(x) + 1 for x in rest) // len(rest))
+    n = max(1, min(len(rest), budget // avg))
+    picked, used = [], 0
+    for k in range(n):
+        para = rest[k * len(rest) // n]
+        if used + len(para) + 1 > budget:
+            continue
+        picked.append(para)
+        used += len(para) + 1
+    return "\n".join(head + picked)
+
+
 def _interleave(srcs: list[S.Source]) -> list[S.Source]:
     """Toplayıcı + dil gruplarını sırayla karıştırır (round-robin); grup içi sıra korunur.
 
@@ -131,7 +160,7 @@ def select_sources(found: list[S.Source], keywords: list[str], dropped: list | N
             drop.append((s.collector, s.title, "ilgisiz" if not is_media_work(s) else "eser"))
             continue
         seen |= keys
-        s.text = s.text[:TYPE_CAP.get(s.source_type, 4000)]
+        s.text = spread_sample(s.text, TYPE_CAP.get(s.source_type, 4000))
         unique.append(s)
     unique = _interleave(unique)
     # Tür başına bütçe: uzun ansiklopedi maddeleri akademik kaynakları dışarıda bırakamaz (1453'te 22 → 4 kaynak olmuştu)

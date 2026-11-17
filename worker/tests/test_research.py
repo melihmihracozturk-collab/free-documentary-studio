@@ -365,6 +365,16 @@ def test_relevance_counts_body_not_only_intro():
     assert not research._relevant(other, keys)
 
 
+def test_spread_sample_covers_whole_article():
+    paras = [f"Yıl {1889 + i}: cemiyet bu yıl şunları yaptı. " * 8 for i in range(40)]   # 1889..1928
+    text = "\n".join(paras)
+    out = research.spread_sample(text, 6000)
+    assert len(out) <= 6000
+    assert "Yıl 1889" in out and any(f"Yıl {y}" in out for y in range(1914, 1929))   # geç dönem de girer
+    assert all(p in paras for p in out.split("\n"))                                  # paragraflar bütün
+    assert research.spread_sample("kısa", 6000) == "kısa"
+
+
 def test_dedupe_real_fetih_repeats():
     sc = lambda t, refs: {"voiceover": t, "claim_refs": refs}
     scenes = [
