@@ -62,6 +62,14 @@ def quote_in_text(quote: str, text: str, threshold: float = 0.85) -> bool:
     return False
 
 
+def relevance_score(src: S.Source, keywords: list[str]) -> float:
+    """Çekirdek kelimelerin ilk 12k karakterdeki sıklığı (1000 karakter başına); başlıkta geçerse +5."""
+    keys = [_norm(k) for k in keywords if len(_norm(k)) >= 3]
+    body = " " + _norm(src.text[:12000]) + " "
+    hits = sum(body.count(" " + k) for k in keys)
+    return hits * 1000 / max(len(body), 1000) + (5 if any(k in _norm(src.title) for k in keys) else 0)
+
+
 def _relevant(src: S.Source, keywords: list[str]) -> bool:
     """Kaynak konuyla ilgili mi? Çekirdek kelime başlıkta geçmeli ya da metnin başında yeterince sık geçmeli.
 
@@ -125,7 +133,8 @@ def spread_sample(text: str, cap: int, intro: int = 3000) -> str:
             continue
         picked.append(para)
         used += len(para) + 1
-    return "\n".join(head + picked)
+    out = "\n".join(head + picked)
+    return out if len(out) >= cap // 2 else text[:cap]     # paragrafsız/çok uzun paragraflı metin: baştan kırp
 
 
 def _interleave(srcs: list[S.Source]) -> list[S.Source]:
@@ -163,6 +172,9 @@ def select_sources(found: list[S.Source], keywords: list[str], dropped: list | N
         s.text = spread_sample(s.text, TYPE_CAP.get(s.source_type, 4000))
         unique.append(s)
     unique = _interleave(unique)
+    # Ansiklopedi bütçesi önce konuyla en yoğun ilgili maddelere gider (Talaat Pasha > yan örgüt maddesi)
+    score = {id(s): relevance_score(s, keywords) for s in unique}
+    unique.sort(key=lambda s: -score[id(s)] if s.source_type == "encyclopedia" else 0)
     # Tür başına bütçe: uzun ansiklopedi maddeleri akademik kaynakları dışarıda bırakamaz (1453'te 22 → 4 kaynak olmuştu)
     used = {t: 0 for t in TYPE_BUDGET}
     out, total = [], 0

@@ -373,6 +373,17 @@ def test_spread_sample_covers_whole_article():
     assert "Yıl 1889" in out and any(f"Yıl {y}" in out for y in range(1914, 1929))   # geç dönem de girer
     assert all(p in paras for p in out.split("\n"))                                  # paragraflar bütün
     assert research.spread_sample("kısa", 6000) == "kısa"
+    assert len(research.spread_sample("paragrafsız uzun metin " * 1000, 6000)) == 6000   # boş dönmez
+
+
+def test_budget_prefers_most_relevant_articles():
+    filler = "Bu madde başka bir örgütü anlatır.\n" * 300
+    side = [S.Source(f"y{i}", f"Yan örgüt {i}", "Wikipedia", "encyclopedia", "wikipedia",
+                     filler + "İttihat ve Terakki " * 3, lang="tr") for i in range(5)]
+    core = S.Source("t", "Talaat Pasha", "Wikipedia", "encyclopedia", "wikipedia",
+                    ("Talaat led the Committee of Union and Progress.\n" * 20 + filler) * 2, lang="tr")
+    kept = research.select_sources(side + [core], ["Committee of Union and Progress", "İttihat ve Terakki"])
+    assert any(k.title == "Talaat Pasha" for k in kept)
 
 
 def test_dedupe_real_fetih_repeats():
