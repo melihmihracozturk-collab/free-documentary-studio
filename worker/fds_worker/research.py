@@ -71,7 +71,9 @@ def _relevant(src: S.Source, keywords: list[str]) -> bool:
     title = _norm(src.title)
     if any(k in title for k in keys):
         return True
-    head = " " + _norm(src.text[:3000]) + " "
+    # İlk 12k karakter (ansiklopedi sınırı): kişi/olay maddeleri konuyu girişte değil gövdede anar
+    # (ör. "Talaat Pasha" girişte cemiyeti 1-2 kez, ilk 12k'da 18 kez anıyor).
+    head = " " + _norm(src.text[:12000]) + " "
     need = 3 if src.collector == "wikipedia" else 1
     return sum(head.count(" " + k) for k in keys) >= need
 

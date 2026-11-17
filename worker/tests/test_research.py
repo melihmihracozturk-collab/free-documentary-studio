@@ -355,6 +355,16 @@ def test_selection_mixes_wiki_languages_and_articles():
     assert any(k.lang == "tr" for k in kept)                # proje dilindeki Vikipedi de girer
 
 
+def test_relevance_counts_body_not_only_intro():
+    intro = "Mehmed Talaat was an Ottoman politician and statesman. " * 60          # ~3.3k karakter, cemiyet yok
+    body = "He led the Committee of Union and Progress. " * 4
+    talaat = S.Source("t", "Talaat Pasha", "Wikipedia", "encyclopedia", "wikipedia", intro + body)
+    other = S.Source("g", "Ghadar movement", "Wikipedia", "encyclopedia", "wikipedia", intro.replace("Ottoman", "Indian") * 2)
+    keys = ["Committee of Union and Progress", "İttihat ve Terakki"]
+    assert research._relevant(talaat, keys)
+    assert not research._relevant(other, keys)
+
+
 def test_dedupe_real_fetih_repeats():
     sc = lambda t, refs: {"voiceover": t, "claim_refs": refs}
     scenes = [
