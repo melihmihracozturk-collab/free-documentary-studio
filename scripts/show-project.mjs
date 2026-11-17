@@ -55,6 +55,10 @@ try {
       `- R2'ye indirilen: ${av.filter((x) => x.dl).length}/${av.length}`);
     for (const x of av.filter((x) => !x.dl)) out.push(`  - ${x.kind}#${x.idx} ${x.source}: ${x.reject_reason ?? "indirilmedi"} · ${x.url}`);
   }
+  const src = await sql`select ref, title, source_type, collector, url from sources where project_id = ${p.id}
+                         order by (substring(ref from 2))::int`;
+  if (src.length) out.push("", `## Güncel kaynaklar (${src.length})`, "",
+    ...src.map((s) => `- ${s.ref} · ${s.source_type} · ${s.collector} · ${s.title} · ${s.url}`));
   const [r] = await sql`select markdown from research_reports where project_id = ${p.id} order by version desc limit 1`;
   if (r) out.push("", "---", "", r.markdown);
   for (const kind of ["doc", "shorts"]) {
