@@ -63,11 +63,11 @@ def quote_in_text(quote: str, text: str, threshold: float = 0.85) -> bool:
 
 
 def relevance_score(src: S.Source, keywords: list[str]) -> float:
-    """Çekirdek kelimelerin ilk 12k karakterdeki sıklığı (1000 karakter başına); başlıkta geçerse +5."""
+    """Çekirdek kelimelerin ilk 12k karakterdeki sıklığı (1000 karakter başına)."""
     keys = [_norm(k) for k in keywords if len(_norm(k)) >= 3]
     body = " " + _norm(src.text[:12000]) + " "
     hits = sum(body.count(" " + k) for k in keys)
-    return hits * 1000 / max(len(body), 1000) + (5 if any(k in _norm(src.title) for k in keys) else 0)
+    return hits * 1000 / max(len(body), 1000)
 
 
 def _relevant(src: S.Source, keywords: list[str]) -> bool:
@@ -90,8 +90,8 @@ def _relevant(src: S.Source, keywords: list[str]) -> bool:
 # Ansiklopedi maddesi başına 12k: tek uzun madde bütçeyi doldurmasın, daha çok farklı madde (kişiler, olaylar,
 # proje dilindeki Vikipedi) girsin. İttihat ve Terakki'de 30k sınırla yalnızca 3 madde girebilmişti.
 TYPE_CAP = {"encyclopedia": 12000, "academic": 4000, "archive": 3000}
-TOTAL_BUDGET = 110000
-TYPE_BUDGET = {"encyclopedia": 55000, "academic": 40000, "archive": 15000}
+TOTAL_BUDGET = 140000
+TYPE_BUDGET = {"encyclopedia": 85000, "academic": 40000, "archive": 15000}
 TYPE_PRIORITY = {"encyclopedia": 0, "academic": 1, "archive": 2}
 
 
