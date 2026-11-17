@@ -90,58 +90,70 @@ def word_times(scene_texts: list[str], words: list[tuple[str, float, float]], bo
     return script, out
 
 
+def _wrap(words: list[str], max_line: int) -> list[str]:
+    lines, line = [], ""
+    for w in words:
+        if line and len(line) + 1 + len(w) > max_line:
+            lines.append(line)
+            line = w
+        else:
+            line = f"{line} {w}".strip()
+    return lines + [line] if line else lines
+
+
+def _balanced(idx: list[int], words: list[str], k: int) -> list[list[int]]:
+    """Kelime dizisini karakter uzunluğu dengeli k parçaya böler (sondaki tek kelime yalnız kalmaz)."""
+    total = sum(len(words[i]) + 1 for i in idx)
+    parts, cur, acc, target = [], [], 0, total / k
+    for n, i in enumerate(idx):
+        cur.append(i)
+        acc += len(words[i]) + 1
+        remaining = len(idx) - n - 1
+        if len(parts) < k - 1 and acc >= target * (len(parts) + 1) and remaining > 0:
+            parts.append(cur)
+            cur = []
+    if cur:
+        parts.append(cur)
+    return parts
+
+
 def build_cues(scene_texts, words, bounds, max_line: int = 42, max_lines: int = 2) -> list[Cue]:
+    """Senaryo metnini konuşulan zamanlara göre altyazıya böler.
+
+    Her cümle tek parça halinde sığmıyorsa DENGELİ parçalara bölünür; her parça en fazla max_lines satıra sığar
+    (gerekirse parça sayısı artırılır). Böylece ne tek kalan kelime ne de ekrandan taşan satır oluşur.
+    """
     script, times = word_times(scene_texts, words, bounds)
-    cues: list[Cue] = []
-    cur: list[int] = []
-
-    def flush():
-        if not cur:
-            return
-        text = " ".join(script[k][0] for k in cur)
-        lines, line = [], ""
-        for w in text.split():
-            if line and len(line) + 1 + len(w) > max_line:
-                lines.append(line)
-                line = w
-            else:
-                line = f"{line} {w}".strip()
-        lines.append(line)
-        if len(lines) > max_lines:
-            lines = lines[:max_lines - 1] + [" ".join(lines[max_lines - 1:])]
-        cues.append((times[cur[0]][0], times[cur[-1]][1], "\n".join(lines)))
-        cur.clear()
-
-    def words_to_sentence_end(k: int) -> int:
-        """k'dan sonra cümle (veya sahne) bitene kadar kaç kelime var."""
-        n = 0
-        for j in range(k + 1, len(script)):
-            if script[j][1] != script[k][1]:
-                break
-            n += 1
-            if re.search(r"[.!?…]$", script[j][0]):
-                break
-        return n
-
+    texts = [w for w, _ in script]
+    # Cümlelere ayır (sahne değişimi de cümleyi bitirir)
+    sentences, cur = [], []
     for k, (w, si) in enumerate(script):
         if cur and script[cur[-1]][1] != si:
-            flush()                                         # sahne değişince yeni altyazı
+            sentences.append(cur)
+            cur = []
         cur.append(k)
-        length = len(" ".join(script[x][0] for x in cur))
-        rest = words_to_sentence_end(k)
         if re.search(r"[.!?…]$", w):
-            flush()
-        elif length > max_line * max_lines - 8 and not (1 <= rest <= 2 and length < max_line * max_lines + 6):
-            flush()                                         # uzun: böl — ama cümlenin son 1-2 kelimesini yalnız bırakma
-        elif re.search(r"[,;:]$", w) and length > max_line and rest > 2:
-            flush()
-    flush()
+            sentences.append(cur)
+            cur = []
+    if cur:
+        sentences.append(cur)
+
+    cues: list[Cue] = []
+    for sent in sentences:
+        k = 1
+        while True:
+            parts = _balanced(sent, texts, k)
+            if all(len(_wrap([texts[i] for i in pt], max_line)) <= max_lines for pt in parts) or k >= len(sent):
+                break
+            k += 1
+        for pt in parts:
+            cues.append((times[pt[0]][0], times[pt[-1]][1], "\n".join(_wrap([texts[i] for i in pt], max_line))))
     # Çakışma yok, en az 0.8 sn görünür, sonrakinden hemen önce biter
     fixed: list[Cue] = []
-    for n, (s, e, t) in enumerate(cues):
+    for n, (s_, e, t) in enumerate(cues):
         nxt = cues[n + 1][0] if n + 1 < len(cues) else e + 2
-        e = min(max(e + 0.15, s + 0.8), nxt - 0.02)
-        fixed.append((round(s, 3), round(max(e, s + 0.3), 3), t))
+        e = min(max(e + 0.15, s_ + 0.8), nxt - 0.02)
+        fixed.append((round(s_, 3), round(max(e, s_ + 0.3), 3), t))
     return fixed
 
 

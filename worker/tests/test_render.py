@@ -218,3 +218,20 @@ def test_shorts_lines_fit_narrow_screen():
         lines = c[2].split("\n")
         assert len(lines) <= 3
         assert all(len(x) <= R.SHORTS.max_line + 8 for x in lines), c   # 1080 px'e sığar (tek uzun kelime payı)
+
+
+def test_real_1453_subtitle_cases():
+    """1453 render'ında görülen iki hata: 'parçasıydı.' tek başına kaldı; Shorts'ta satırlar ekrandan taştı."""
+    doc = "Zihinlerdeki bu hayali senaryolar, fethin yarattığı büyüleyici ve ürkütücü atmosferin birer parçasıydı."
+    words, end = words_for([doc])
+    cues = R.build_cues([doc], words, [(0.0, end)], R.DOC.max_line, R.DOC.max_lines)
+    assert all(len(c[2].split()) >= 3 for c in cues), cues
+    for t in ["Nihai taarruz yirmi dokuz mayıs salı günü sabah saatlerinde bütün şiddetiyle başladı.",
+              "Çatışma sırasında Cenevizli komutan Giovanni Giustiniani ağır bir yara aldı.",
+              "Bu devasa fethin ardındaki tüm bilinmeyenler, stratejiler ve gizli kalmış detaylar belgeselin tamamında seni bekliyor."]:
+        words, end = words_for([t])
+        cues = R.build_cues([t], words, [(0.0, end)], R.SHORTS.max_line, R.SHORTS.max_lines)
+        for c in cues:
+            lines = c[2].split("\n")
+            assert len(lines) <= 3 and all(len(x) <= R.SHORTS.max_line for x in lines), c
+            assert len(c[2].split()) >= 2, c
