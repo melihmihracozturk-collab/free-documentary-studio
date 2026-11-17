@@ -77,7 +77,9 @@ def _relevant(src: S.Source, keywords: list[str]) -> bool:
 
 
 # Kaynak türüne göre metin üst sınırı ve toplam bütçe (LLM kotasını korur: ~4-5 çıkarma çağrısı)
-TYPE_CAP = {"encyclopedia": 30000, "academic": 4000, "archive": 3000}
+# Ansiklopedi maddesi başına 12k: tek uzun madde bütçeyi doldurmasın, daha çok farklı madde (kişiler, olaylar,
+# proje dilindeki Vikipedi) girsin. İttihat ve Terakki'de 30k sınırla yalnızca 3 madde girebilmişti.
+TYPE_CAP = {"encyclopedia": 12000, "academic": 4000, "archive": 3000}
 TOTAL_BUDGET = 110000
 TYPE_BUDGET = {"encyclopedia": 55000, "academic": 40000, "archive": 15000}
 TYPE_PRIORITY = {"encyclopedia": 0, "academic": 1, "archive": 2}
@@ -95,6 +97,22 @@ def is_media_work(src: S.Source) -> bool:
     return src.source_type == "encyclopedia" and bool(MEDIA_WORK.search(src.text[:600]))
 
 
+def _interleave(srcs: list[S.Source]) -> list[S.Source]:
+    """Toplayıcı + dil gruplarını sırayla karıştırır (round-robin); grup içi sıra korunur.
+
+    Böylece bütçe yalnızca ilk sorgunun sonuçlarıyla (ör. hep İngilizce Vikipedi) dolmaz.
+    """
+    groups: dict[tuple, list[S.Source]] = {}
+    for s in srcs:
+        groups.setdefault((s.collector, getattr(s, "lang", None)), []).append(s)
+    out, lists = [], list(groups.values())
+    while any(lists):
+        for g in lists:
+            if g:
+                out.append(g.pop(0))
+    return out
+
+
 def select_sources(found: list[S.Source], keywords: list[str]) -> list[S.Source]:
     """Tekilleştir (URL, DOI, başlık), alakasızları ele, metni kırp, toplam bütçeye sığdır."""
     seen, unique = set(), []
@@ -106,6 +124,7 @@ def select_sources(found: list[S.Source], keywords: list[str]) -> list[S.Source]
         seen |= keys
         s.text = s.text[:TYPE_CAP.get(s.source_type, 4000)]
         unique.append(s)
+    unique = _interleave(unique)
     # Tür başına bütçe: uzun ansiklopedi maddeleri akademik kaynakları dışarıda bırakamaz (1453'te 22 → 4 kaynak olmuştu)
     used = {t: 0 for t in TYPE_BUDGET}
     out, total = [], 0

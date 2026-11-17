@@ -345,6 +345,16 @@ def test_budget_keeps_academic_sources():
     assert sum(len(k.text) for k in kept if k.source_type == "encyclopedia") <= research.TYPE_BUDGET["encyclopedia"]
 
 
+def test_selection_mixes_wiki_languages_and_articles():
+    en = [S.Source(f"e{i}", f"İttihat en {i}", "Wikipedia", "encyclopedia", "wikipedia", "İttihat " * 6000, lang="en")
+          for i in range(6)]
+    tr = [S.Source(f"t{i}", f"İttihat tr {i}", "Wikipedia", "encyclopedia", "wikipedia", "İttihat " * 6000, lang="tr")
+          for i in range(3)]
+    kept = [k for k in research.select_sources(en + tr, ["İttihat"]) if k.source_type == "encyclopedia"]
+    assert len(kept) >= 4                                   # tek uzun madde bütçeyi doldurmaz
+    assert any(k.lang == "tr" for k in kept)                # proje dilindeki Vikipedi de girer
+
+
 def test_dedupe_real_fetih_repeats():
     sc = lambda t, refs: {"voiceover": t, "claim_refs": refs}
     scenes = [
