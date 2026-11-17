@@ -113,13 +113,20 @@ def _interleave(srcs: list[S.Source]) -> list[S.Source]:
     return out
 
 
-def select_sources(found: list[S.Source], keywords: list[str]) -> list[S.Source]:
-    """Tekilleştir (URL, DOI, başlık), alakasızları ele, metni kırp, toplam bütçeye sığdır."""
+def select_sources(found: list[S.Source], keywords: list[str], dropped: list | None = None) -> list[S.Source]:
+    """Tekilleştir (URL, DOI, başlık), alakasızları ele, metni kırp, toplam bütçeye sığdır.
+
+    dropped verilirse elenen her kaynak için (başlık, neden) eklenir (tanılama için).
+    """
+    drop = dropped if dropped is not None else []
     seen, unique = set(), []
     for s in found:
         keys = {s.url, s.extra.get("doi"), (s.collector, _norm(s.title))}
         keys.discard(None)
-        if keys & seen or not _relevant(s, keywords) or is_media_work(s):
+        if keys & seen:
+            continue
+        if not _relevant(s, keywords) or is_media_work(s):
+            drop.append((s.collector, s.title, "ilgisiz" if not is_media_work(s) else "eser"))
             continue
         seen |= keys
         s.text = s.text[:TYPE_CAP.get(s.source_type, 4000)]
@@ -131,6 +138,7 @@ def select_sources(found: list[S.Source], keywords: list[str]) -> list[S.Source]
     for s in unique:
         t = s.source_type if s.source_type in TYPE_BUDGET else "archive"
         if used[t] + len(s.text) > TYPE_BUDGET[t] or total + len(s.text) > TOTAL_BUDGET:
+            drop.append((s.collector, s.title, "bütçe"))
             continue
         out.append(s)
         used[t] += len(s.text)
@@ -180,7 +188,11 @@ Return JSON:
         run("archive", S.internet_archive, q, 5)
         run("europeana", S.europeana, q, 5)
 
-    unique = select_sources(found, keywords)
+    dropped: list = []
+    unique = select_sources(found, keywords, dropped)
+    print(f"[research] bulunan {len(found)}, seçilen {len(unique)}", flush=True)
+    for c, t, why in dropped:
+        print(f"[research]   elendi ({why}) {c}: {t[:90]}", flush=True)
 
     if not unique:
         raise RuntimeError("Hiç kaynak bulunamadı. Hatalar: " + " | ".join(errors))
