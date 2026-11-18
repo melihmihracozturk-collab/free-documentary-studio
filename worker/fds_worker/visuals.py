@@ -225,6 +225,8 @@ def download_selected(conn, pid, slug) -> int:
             # Eski kayıtlar orijinal adresi tutuyor olabilir → standart küçük resme çevir; olmazsa 1920 px dene
             urls = [images.commons_download_url(a["file_url"], a["width"])]
             urls.append(images.commons_thumb(re.sub(r"/thumb/(.+)/\d+px-[^/]+$", r"/\1", urls[0]), 1920))
+            # upload.wikimedia.org GitHub sunucularını hız sınırına alabiliyor; aynı küçük resim thumb.wikimedia.org'da da var
+            urls += [u.replace("https://upload.wikimedia.org/", "https://thumb.wikimedia.org/", 1) for u in urls]
         data = None
         for u in dict.fromkeys(urls):
             try:

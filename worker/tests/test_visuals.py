@@ -238,3 +238,22 @@ def test_download_reuses_already_downloaded_same_file(conn, s3, monkeypatch):  #
     assert len(calls) == n                                                    # yeniden indirilmedi
     got = conn.execute("select storage_key from assets where id=%s", (new,)).fetchone()["storage_key"]
     assert got == a["storage_key"]
+
+
+def test_download_tries_thumb_host_when_upload_host_limited(conn, s3, monkeypatch):  # noqa: F811
+    from PIL import Image
+    pid, job = _setup(conn)
+    orig = "https://upload.wikimedia.org/wikipedia/commons/f/fb/Ottoman_artillery.jpg"
+    fake_archives(monkeypatch, [cand("Vesuvius eruption painting O", "commons", "pd", w=3675, url=orig)])
+    buf = io.BytesIO(); Image.new("RGB", (1920, 1318)).save(buf, "JPEG")
+
+    class R:
+        content = buf.getvalue()
+
+    def req(method, url, **k):
+        if url.startswith("https://upload.wikimedia.org/"):
+            raise http.RateLimited("upload.wikimedia.org: 429")
+        return R()
+    monkeypatch.setattr(http, "request", req)
+    res = VZ.match(conn, steps(conn, job)["asset_match"]).output
+    assert res["downloaded"] >= 1
