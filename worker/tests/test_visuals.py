@@ -20,6 +20,16 @@ def test_queries_for_adds_topic():
     sc = {"search_keywords": ["volcano eruption painting", "Pompeii fresco"]}
     q = VZ.queries_for(sc, ["Pompeii", "Vesuvius"])
     assert q[0] == "Pompeii volcano eruption painting" and q[1] == "Pompeii fresco" and q[-1] == "Pompeii"
+    assert "volcano eruption painting" in q                  # önekli sorgu boş dönerse sahnenin kendi sorgusu
+
+
+def test_match_reuses_best_image_instead_of_leaving_scene_empty(conn, monkeypatch):
+    pid, job = _setup(conn)
+    fake_archives(monkeypatch, [cand("Vesuvius eruption painting A", "met", "cc0")])   # 3 sahneye tek görsel
+    VZ.plan(conn, steps(conn, job)["visual_plan"])
+    res = VZ.match(conn, steps(conn, job)["asset_match"]).output
+    assert res["missing"] == [] and res["assigned"] == 5
+    assert res["reused"] == ["doc#2", "doc#3", "shorts#2"]
 
 
 def test_score_prefers_relevant_high_res_cc0():

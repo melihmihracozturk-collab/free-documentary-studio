@@ -54,7 +54,11 @@ def queries_for(scene: dict, core: list[str]) -> list[str]:
     qs = [q.strip() for q in (scene.get("search_keywords") or []) if q and q.strip()][:3]
     if core:
         # Konu adı geçmeyen sorgulara çekirdek kelime ekle (alakasız sonuçları azaltır)
-        qs = [q if _tokens(q) & _tokens(" ".join(core)) else f"{core[0]} {q}" for q in qs]
+        raw = [q for q in qs if not _tokens(q) & _tokens(" ".join(core))]
+        qs = [q if q not in raw else f"{core[0]} {q}" for q in qs]
+        # Önek eklenmiş uzun sorgular Commons'ta çoğu zaman sıfır sonuç verir ("Committee of Union and
+        # Progress Talaat Pasha portrait"); sahnenin kendi sorgusu da aranır, puanlama konu kelimesini ödüllendirir.
+        qs += raw
         qs.append(core[0])                                        # son çare: konunun kendisi
     seen, out = set(), []
     for q in qs:
@@ -116,7 +120,7 @@ def match(conn, step) -> StepResult:
     core = _core_keywords(conn, pid)
     cache: dict = {}
     errors: list[str] = []
-    stats = {"scenes": 0, "assigned": 0, "missing": [], "rejected_license": 0, "candidates": 0}
+    stats = {"scenes": 0, "assigned": 0, "missing": [], "reused": [], "rejected_license": 0, "candidates": 0}
     conn.execute("update scenes set asset_id=null where project_id=%s", (pid,))
     conn.execute("delete from assets where project_id=%s and scene_id is not null", (pid,))
 
@@ -137,6 +141,10 @@ def match(conn, step) -> StepResult:
                 uniq.setdefault(c.file_url, c)
             ranked = sorted(uniq.values(), key=lambda c: score(c, sc, core, kind), reverse=True)
             chosen = next((c for c in ranked if c.file_url not in used), None)
+            if chosen is None and ranked:
+                # Yeni görsel kalmadıysa sahne boş kalmaz: en uygun görsel tekrar kullanılır (panelde değiştirilebilir)
+                chosen = ranked[0]
+                stats["reused"].append(f"{kind}#{sc['idx']}")
             top = ranked[:MAX_CANDIDATES]
             if chosen and chosen not in top:
                 top = [chosen] + top[:MAX_CANDIDATES - 1]
