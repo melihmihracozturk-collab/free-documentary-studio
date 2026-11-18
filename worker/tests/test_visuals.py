@@ -42,6 +42,30 @@ def test_score_prefers_relevant_high_res_cc0():
     assert VZ.score(good, sc, core, "doc") > VZ.score(off, sc, core, "doc")
 
 
+def test_topic_phrase_not_split_into_generic_words():
+    core = ["Committee of Union and Progress", "İttihat ve Terakki"]
+    sc = {"search_keywords": ["Talaat Pasha portrait"], "visual_description": "portrait of Talaat"}
+    off = cand("The Progress of the Century – The Lightning Steam Press", "met", "cc0", 4000, 3000)
+    on = cand("Members of the Central Committee of the Committee of Union and Progress", "commons", "pd", 2000, 1500)
+    tr = cand("İttihat ve Terakki amblemi", "commons", "pd", 1000, 1000)
+    talaat = cand("Talaat Pasha 1915", "commons", "pd", 1200, 1600)
+    assert VZ.relevance(off, sc, core) == (0.0, 0.0)
+    assert VZ.relevance(on, sc, core)[1] == 1.0 and VZ.relevance(tr, sc, core)[1] == 1.0
+    assert VZ.relevance(talaat, sc, core)[0] > 0
+    assert VZ.score(talaat, sc, core, "doc") > VZ.score(off, sc, core, "doc")
+
+
+def test_match_prefers_reusing_relevant_over_unrelated(conn, monkeypatch):
+    pid, job = _setup(conn)
+    fake_archives(monkeypatch, [cand("Vesuvius eruption painting A", "met", "cc0"),
+                                cand("Pilgrim vase", "met", "cc0"), cand("Jardiniere", "met", "cc0")])
+    VZ.plan(conn, steps(conn, job)["visual_plan"])
+    VZ.match(conn, steps(conn, job)["asset_match"])
+    titles = {r["title"] for r in conn.execute("select a.title from scenes s join assets a on a.id=s.asset_id "
+                                               "where s.project_id=%s", (pid,)).fetchall()}
+    assert titles == {"Vesuvius eruption painting A"}                     # vazo seçilmez
+
+
 def _setup(conn):
     pid, job = make_project(conn)
     conn.execute("update job_steps set output=%s::jsonb where job_id=%s and step_key='research_collect'",

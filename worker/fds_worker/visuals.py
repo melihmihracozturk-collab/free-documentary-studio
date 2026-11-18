@@ -46,7 +46,8 @@ def _core_keywords(conn, project_id) -> list[str]:
                        "order by finished_at desc nulls last limit 1", (project_id,)).fetchone()
     plan = (row or {}).get("output", {}) or {}
     plan = plan.get("plan", {}) if isinstance(plan, dict) else {}
-    return [k for k in (plan.get("core_keywords") or []) if k.isascii()][:3]
+    keys = [k for k in (plan.get("core_keywords") or []) if k and k.strip()]
+    return sorted(keys, key=lambda k: not k.isascii())[:4]          # sorgu öneki için ASCII olan önce
 
 
 # ----------------------------------------------------------------- 1) görsel plan
@@ -81,11 +82,23 @@ def plan(conn, step) -> StepResult:
 
 
 # ----------------------------------------------------------------- 2) eşleştirme
-def score(c: images.ImageCandidate, scene: dict, core: list[str], kind: str) -> float:
+def relevance(c: images.ImageCandidate, scene: dict, core: list[str]) -> tuple[float, float]:
+    """(sahne kelimeleriyle örtüşme 0-1, konu adı geçiyor mu 0/1).
+
+    Konu adı TAM ifade olarak aranır: "Committee of Union and Progress" kelimelere bölününce
+    "The Progress of the Century" gibi alakasız eserler konu puanı alıyordu.
+    """
     words = _tokens(" ".join((scene.get("search_keywords") or []) + [scene.get("visual_description") or ""]))
+    words -= {t for k in core for t in _tokens(k)} if any(len(_tokens(k)) > 1 for k in core) else set()
     text = _tokens(f"{c.title} {c.description}")
     rel = len(words & text) / max(1, min(len(words), 6))
-    topic = 1.0 if _tokens(" ".join(core)) & text else 0.0
+    hay = f" {_norm(f'{c.title} {c.description}')} "
+    topic = 1.0 if any(_norm(k) and f" {_norm(k)} " in hay for k in core) else 0.0
+    return rel, topic
+
+
+def score(c: images.ImageCandidate, scene: dict, core: list[str], kind: str) -> float:
+    rel, topic = relevance(c, scene, core)
     w, h = c.width or 0, c.height or 0
     need = 1920 if kind == "doc" else 1080                         # Shorts dikey: kısa kenar ≥ 1080 yeterli
     res = 0.6 if not w else min(1.0, (min(w, h) if kind == "shorts" else w) / need)
@@ -140,10 +153,11 @@ def match(conn, step) -> StepResult:
             for c in ok:
                 uniq.setdefault(c.file_url, c)
             ranked = sorted(uniq.values(), key=lambda c: score(c, sc, core, kind), reverse=True)
-            chosen = next((c for c in ranked if c.file_url not in used), None)
-            if chosen is None and ranked:
-                # Yeni görsel kalmadıysa sahne boş kalmaz: en uygun görsel tekrar kullanılır (panelde değiştirilebilir)
-                chosen = ranked[0]
+            fits = [c for c in ranked if any(relevance(c, sc, core))]      # sahneyle ya da konuyla en az bir bağ
+            chosen = next((c for c in fits if c.file_url not in used), None)
+            if chosen is None and (fits or ranked):
+                # Alakasız yeni görsel yerine ilgili bir görsel tekrar kullanılır; hiç ilgili yoksa en iyisi
+                chosen = (fits or ranked)[0]
                 stats["reused"].append(f"{kind}#{sc['idx']}")
             top = ranked[:MAX_CANDIDATES]
             if chosen and chosen not in top:
