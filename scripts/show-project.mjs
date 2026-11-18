@@ -53,6 +53,7 @@ try {
     const by = (f) => av.reduce((m, x) => ((m[f(x)] = (m[f(x)] ?? 0) + 1), m), {});
     out.push("", "## Görseller", "", `- Kaynak: ${JSON.stringify(by((x) => x.source))}`, `- Lisans: ${JSON.stringify(by((x) => x.license_class))}`,
       `- R2'ye indirilen: ${av.filter((x) => x.dl).length}/${av.length}`);
+    out.push("", "### Sahne görselleri", "", ...av.map((x) => `- ${x.kind}#${x.idx} · ${x.source}/${x.license_class} · ${x.title}`));
     for (const x of av.filter((x) => !x.dl)) out.push(`  - ${x.kind}#${x.idx} ${x.source}: ${x.reject_reason ?? "indirilmedi"} · ${x.url}`);
   }
   const src = await sql`select ref, title, source_type, collector, url from sources where project_id = ${p.id}
