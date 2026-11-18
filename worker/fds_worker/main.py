@@ -82,7 +82,7 @@ def run(url: str, max_minutes: float, dry_run: bool, once: bool) -> int:
             except QuotaExhausted as exc:
                 # Kota dolu: deneme hakkı harcanmaz, adım beklemeye döner; bu çalıştırma durur (cron sonra dener).
                 conn.execute("select defer_step(%s, %s, %s)", (step["id"], worker_id, str(exc)[:2000]))
-                print(f"[worker] ⏸ {step['step_key']} ertelendi (LLM kotası). Sonraki otomatik çalıştırmada devam edecek.")
+                print(f"[worker] ⏸ {step['step_key']} ertelendi (kota / hız sınırı). Sonraki otomatik çalıştırmada devam edecek.")
                 hb.stop()
                 break
             except Exception as exc:  # noqa: BLE001 — her hata kayda geçmeli

@@ -211,6 +211,15 @@ def download_selected(conn, pid, slug) -> int:
                         "and a.storage_key is null", (pid,)).fetchall()
     n = 0
     for a in rows:
+        # Aynı dosya başka bir sahne için zaten indirildiyse yeniden indirme (Wikimedia hız sınırına takılmaz)
+        twin = conn.execute("select storage_key, sha256, bytes, width, height from assets where project_id=%s "
+                            "and file_url=%s and storage_key is not null limit 1", (pid, a["file_url"])).fetchone()
+        if twin:
+            conn.execute("update assets set storage_key=%s, sha256=%s, bytes=%s, width=%s, height=%s, reject_reason=null "
+                         "where id=%s", (twin["storage_key"], twin["sha256"], twin["bytes"], twin["width"], twin["height"],
+                                         a["id"]))
+            n += 1
+            continue
         urls = [a["file_url"]]
         if a["source"] == "commons":
             # Eski kayıtlar orijinal adresi tutuyor olabilir → standart küçük resme çevir; olmazsa 1920 px dene
@@ -222,7 +231,7 @@ def download_selected(conn, pid, slug) -> int:
                 data, w, h = fetch_image(u)
                 break
             except Exception as e:  # noqa: BLE001
-                err = f"indirilemedi: {type(e).__name__}"
+                err = f"indirilemedi: {type(e).__name__}: {str(e)[:120]}"
         if data is None:
             conn.execute("update assets set reject_reason=%s where id=%s", (err[:200], a["id"]))
             continue

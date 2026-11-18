@@ -207,3 +207,34 @@ def test_set_image_assigns_manual_commons_file(conn, monkeypatch):
     monkeypatch.setattr(images, "commons_file", lambda t: cand("Kısıtlı", "commons", "nd"))
     with pytest.raises(SystemExit):                                    # ND lisans reddedilir
         set_image.assign(conn, slug, "doc", 3, "File:X.jpg")
+
+
+def test_download_reuses_already_downloaded_same_file(conn, s3, monkeypatch):  # noqa: F811
+    from PIL import Image
+    pid, job = _setup(conn)
+    fake_archives(monkeypatch, [cand(f"Vesuvius eruption painting {i}", "met", "cc0") for i in range(4)])
+    img = io.BytesIO()
+    Image.new("RGB", (800, 600)).save(img, "PNG")
+    calls = []
+
+    class R:
+        content = img.getvalue()
+
+    def req(*a, **k):
+        calls.append(a)
+        return R()
+    monkeypatch.setattr(http, "request", req)
+    VZ.match(conn, steps(conn, job)["asset_match"])
+    n = len(calls)
+    # Shorts sahnesine belgeselde indirilmiş görselin yeni bir kaydı atanır (panelde seçilen aday gibi)
+    a = conn.execute("select a.* from scenes s join assets a on a.id=s.asset_id where s.project_id=%s and s.kind='doc' "
+                     "and s.idx=1", (pid,)).fetchone()
+    sh = conn.execute("select id from scenes where project_id=%s and kind='shorts' and idx=1", (pid,)).fetchone()
+    new = conn.execute("insert into assets (project_id, scene_id, kind, source, title, file_url, license_class, status) "
+                       "values (%s,%s,'image','met',%s,%s,'cc0','approved') returning id",
+                       (pid, sh["id"], a["title"], a["file_url"])).fetchone()["id"]
+    conn.execute("update scenes set asset_id=%s where id=%s", (new, sh["id"]))
+    assert VZ.download_selected(conn, pid, "pompei-son-gunu") == 1
+    assert len(calls) == n                                                    # yeniden indirilmedi
+    got = conn.execute("select storage_key from assets where id=%s", (new,)).fetchone()["storage_key"]
+    assert got == a["storage_key"]

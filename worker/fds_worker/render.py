@@ -20,6 +20,7 @@ from pathlib import Path
 from psycopg.types.json import Jsonb
 
 from . import storage, visuals, voiceover
+from .llm import QuotaExhausted
 from .handlers import StepResult
 
 RENDER_VERSION = "r3"
@@ -366,6 +367,11 @@ def render_video(conn, step, fmt: Format, out_name: str, tempo: float = 1.0) -> 
                           "on a.id = s.asset_id where s.project_id=%s and s.kind=%s order by s.idx", (p["id"], fmt.kind)).fetchall()
     missing = [s["idx"] for s in scenes if not s["img_key"]]
     if missing:
+        limited = conn.execute("select 1 from scenes s join assets a on a.id = s.asset_id where s.project_id=%s and s.kind=%s "
+                               "and a.storage_key is null and a.reject_reason like '%%RateLimited%%' limit 1",
+                               (p["id"], fmt.kind)).fetchone()
+        if limited:   # arşivin hız sınırı geçicidir: deneme hakkı harcanmadan sonraki çalıştırmaya ertelenir
+            raise QuotaExhausted(f"Görsel arşivi hız sınırı (Wikimedia); sahneler {missing} sonra indirilecek")
         raise RuntimeError(f"Görseli indirilmemiş sahneler: {missing}")
     duration = float(v["duration_sec"]) / tempo
     bounds = [(float(s["start_sec"]) / tempo, float(s["end_sec"]) / tempo) for s in scenes]
