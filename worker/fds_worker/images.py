@@ -74,28 +74,44 @@ def commons(query: str, limit: int = 8) -> list[ImageCandidate]:
         "iiprop": "url|extmetadata|size|mime", "iiurlwidth": COMMONS_THUMB})
     out = []
     for p in (data.get("query") or {}).get("pages", {}).values():
-        ii = (p.get("imageinfo") or [{}])[0]
-        if not ii or not str(ii.get("mime", "")).startswith("image/"):
-            continue
-        md = {k: (v or {}).get("value", "") for k, v in (ii.get("extmetadata") or {}).items()}
-        lic_raw = " ".join(x for x in (md.get("LicenseShortName"), md.get("License"), md.get("UsageTerms")) if x)
-        if md.get("Copyrighted", "").lower() == "false" and not lic_raw:
-            lic_raw = "public domain"
-        author = _strip(md.get("Artist")) or None
-        file_title = p.get("title", "").removeprefix("File:").rsplit(".", 1)[0].replace("_", " ")
-        obj = _strip(md.get("ObjectName"))
-        # ObjectName bazen Wikidata iç kodları ("label QS:Len,...") veya çok dilli karışık metin içerir
-        title = obj if obj and "QS:" not in obj and len(obj) < 140 else file_title
-        cls = classify(lic_raw, md.get("LicenseUrl"))
-        out.append(ImageCandidate(
-            source="commons", title=title[:300], page_url=ii.get("descriptionurl", ""),
-            file_url=commons_download_url(ii.get("thumburl") or ii.get("url", ""), ii.get("width")),
-            thumb_url=commons_thumb(ii.get("url", "")),
-            license_raw=lic_raw[:200], license_class=cls, license_url=md.get("LicenseUrl") or None, author=author,
-            attribution=f"{title} — {author or 'bilinmeyen'} — {md.get('LicenseShortName') or lic_raw} — Wikimedia Commons",
-            width=ii.get("width"), height=ii.get("height"),
-            description=_strip(md.get("ImageDescription"))[:500], query=query))
+        c = _commons_page(p, query)
+        if c:
+            out.append(c)
     return out
+
+
+def commons_file(file_title: str) -> ImageCandidate | None:
+    """Tek bir Commons dosyası (ör. "File:Talat Pasha.jpg"); elle görsel atamak için."""
+    title = file_title if file_title.startswith("File:") else f"File:{file_title}"
+    data = http.get_json("https://commons.wikimedia.org/w/api.php", params={
+        "action": "query", "format": "json", "titles": title, "prop": "imageinfo",
+        "iiprop": "url|extmetadata|size|mime", "iiurlwidth": COMMONS_THUMB})
+    pages = list((data.get("query") or {}).get("pages", {}).values())
+    return _commons_page(pages[0], "manual") if pages else None
+
+
+def _commons_page(p: dict, query: str) -> ImageCandidate | None:
+    ii = (p.get("imageinfo") or [{}])[0]
+    if not ii or not str(ii.get("mime", "")).startswith("image/"):
+        return None
+    md = {k: (v or {}).get("value", "") for k, v in (ii.get("extmetadata") or {}).items()}
+    lic_raw = " ".join(x for x in (md.get("LicenseShortName"), md.get("License"), md.get("UsageTerms")) if x)
+    if md.get("Copyrighted", "").lower() == "false" and not lic_raw:
+        lic_raw = "public domain"
+    author = _strip(md.get("Artist")) or None
+    file_title = p.get("title", "").removeprefix("File:").rsplit(".", 1)[0].replace("_", " ")
+    obj = _strip(md.get("ObjectName"))
+    # ObjectName bazen Wikidata iç kodları ("label QS:Len,...") veya çok dilli karışık metin içerir
+    title = obj if obj and "QS:" not in obj and len(obj) < 140 else file_title
+    cls = classify(lic_raw, md.get("LicenseUrl"))
+    return ImageCandidate(
+        source="commons", title=title[:300], page_url=ii.get("descriptionurl", ""),
+        file_url=commons_download_url(ii.get("thumburl") or ii.get("url", ""), ii.get("width")),
+        thumb_url=commons_thumb(ii.get("url", "")),
+        license_raw=lic_raw[:200], license_class=cls, license_url=md.get("LicenseUrl") or None, author=author,
+        attribution=f"{title} — {author or 'bilinmeyen'} — {md.get('LicenseShortName') or lic_raw} — Wikimedia Commons",
+        width=ii.get("width"), height=ii.get("height"),
+        description=_strip(md.get("ImageDescription"))[:500], query=query)
 
 
 # ----------------------------------------------------------------- Met Museum Open Access (CC0)

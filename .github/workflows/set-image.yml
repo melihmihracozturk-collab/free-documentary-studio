@@ -1,0 +1,49 @@
+# Bir veya birkaç sahneye elle Wikimedia Commons görseli atar (lisans denetimiyle; R2'ye indirir).
+name: set-image
+
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Proje kısa adı"
+        required: true
+      kind:
+        description: "Sahne türü"
+        required: true
+        default: doc
+        type: choice
+        options: [doc, shorts]
+      idx:
+        description: "Sahne numaraları, virgülle (ör. 33,34)"
+        required: true
+      file:
+        description: "Commons dosya adları, | ile ayrılmış (ör. File:Talat Pasha.jpg|File:Cemâl Paşa.jpg)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m fds_worker.set_image
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SLUG: ${{ inputs.slug }}
+          KIND: ${{ inputs.kind }}
+          IDX: ${{ inputs.idx }}
+          FILE: ${{ inputs.file }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}

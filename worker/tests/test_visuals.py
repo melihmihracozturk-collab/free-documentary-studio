@@ -192,3 +192,18 @@ def test_download_falls_back_to_1920(conn, s3, monkeypatch):  # noqa: F811
     assert res["downloaded"] >= 1
     assert any("3840px-Ruins.jpg" in u for u in asked) and any("1920px-Ruins.jpg" in u for u in asked)
     assert not any(u == orig for u in asked)                                 # orijinale hiç gidilmedi
+
+
+def test_set_image_assigns_manual_commons_file(conn, monkeypatch):
+    from fds_worker import set_image
+    pid, job = _setup(conn)
+    slug = conn.execute("select slug from projects where id=%s", (pid,)).fetchone()["slug"]
+    monkeypatch.setattr(images, "commons_file", lambda t: cand("Talat Pasha", "commons", "pd", 2560, 1834))
+    msg = set_image.assign(conn, slug, "doc", 2, "File:Talat Pasha.jpg")
+    assert "doc#2" in msg
+    row = conn.execute("select a.title, a.status from scenes s join assets a on a.id=s.asset_id "
+                       "where s.project_id=%s and s.kind='doc' and s.idx=2", (pid,)).fetchone()
+    assert row["title"] == "Talat Pasha" and row["status"] == "approved"
+    monkeypatch.setattr(images, "commons_file", lambda t: cand("Kısıtlı", "commons", "nd"))
+    with pytest.raises(SystemExit):                                    # ND lisans reddedilir
+        set_image.assign(conn, slug, "doc", 3, "File:X.jpg")
