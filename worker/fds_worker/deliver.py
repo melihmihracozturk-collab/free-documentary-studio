@@ -18,16 +18,20 @@ def ts(sec: float) -> str:
     return f"{s // 3600}:{s // 60 % 60:02}:{s % 60:02}" if s >= 3600 else f"{s // 60}:{s % 60:02}"
 
 
-def chapters(scenes: list[dict], min_len: float = 10.0) -> list[tuple[float, str]]:
-    """YouTube bölümleri: ilk bölüm 0:00'da, en az 3 bölüm, her biri en az 10 sn. Senaryonun bölümlerinden üretilir."""
+def chapters(scenes: list[dict], min_len: float = 10.0, titles: dict | None = None) -> list[tuple[float, str]]:
+    """YouTube bölümleri: ilk bölüm 0:00'da, en az 3 bölüm, her biri en az 10 sn. Senaryonun bölümlerinden üretilir.
+
+    titles: senaryonun kendi bölüm başlıkları (vlog'da durak adları); yoksa belgesel bölüm adları kullanılır.
+    """
+    names = {**ACT_TITLE, **(titles or {})}
     out: list[tuple[float, str]] = []
     for s in scenes:
         act = s.get("act")
-        if act in ACT_TITLE and (not out or out[-1][1] != ACT_TITLE[act]):
+        if act in names and (not out or out[-1][1] != names[act]):
             start = 0.0 if not out else float(s["start_sec"])
             if out and start - out[-1][0] < min_len:
                 continue
-            out.append((start, ACT_TITLE[act]))
+            out.append((start, names[act]))
     return out if len(out) >= 3 else []
 
 
@@ -50,12 +54,18 @@ def doc_description(p: dict, logline: str | None, summary: str | None, chaps, so
         lines.append("Atıf gerektiren görseller:")
         for a in attr:
             lines.append(f"• {a['title']} — {a['author'] or 'bilinmiyor'} — {a['license'] or a['license_class']} — {a['source_url']}")
-    lines += ["", "Müzik: telifsiz, özgün olarak üretilmiş ambiyans.",
-              "Bu belgesel kaynaklı araştırmaya dayanır; tartışmalı bilgiler anlatımda belirtilmiştir."]
+    lines += ["", "Müzik: telifsiz, özgün olarak üretilmiş ambiyans."]
+    if (p.get("format") or "documentary") == "vlog":
+        lines += ["Bu video kaynaklı araştırmaya dayanır. Fiyat, açılış saati ve ulaşım bilgileri değişebilir; "
+                  "gitmeden önce resmî sitelerden kontrol edin."]
+    else:
+        lines += ["Bu belgesel kaynaklı araştırmaya dayanır; tartışmalı bilgiler anlatımda belirtilmiştir."]
     return "\n".join(lines) + "\n"
 
 
 def shorts_description(p: dict, title: str | None) -> str:
+    if (p.get("format") or "documentary") == "vlog":
+        return f"{title or p['title']}\n\nTam gezi videosu kanalımızda.\n\n#Shorts #gezi #seyahat\n"
     return f"{title or p['title']}\n\nTam belgesel kanalımızda.\n\n#Shorts #tarih #belgesel\n"
 
 
@@ -77,7 +87,7 @@ def ready(conn, step) -> StepResult:
                           (p["id"],)).fetchall()
     doc_c = (scripts.get("doc") or {}).get("content") or {}
     sh_c = (scripts.get("shorts") or {}).get("content") or {}
-    chaps = chapters(scenes)
+    chaps = chapters(scenes, titles=doc_c.get("act_titles"))
     files = {
         "youtube_description.txt": doc_description(p, doc_c.get("logline"), (report or {}).get("summary"), chaps, sources, assets),
         "shorts_description.txt": shorts_description(p, sh_c.get("title")),

@@ -38,14 +38,29 @@ def _setting(conn, key, default):
 
 def _claims_block(conn, project_id):
     rows = conn.execute(
-        "select ref, status, text, event_date, conflict_note from claims where project_id=%s "
+        "select ref, status, text, event_date, conflict_note, category from claims where project_id=%s "
         "and status in ('verified','weak','conflict') order by importance desc, ref", (project_id,)).fetchall()
     lines = []
     for c in rows:
         date = f" ({c['event_date']})" if c["event_date"] else ""
         note = f" — CONFLICT: {c['conflict_note']}" if c["status"] == "conflict" else ""
-        lines.append(f"{c['ref']} [{c['status']}]{date} {c['text']}{note}")
+        prac = " [practical]" if c.get("category") == "practical" else ""
+        lines.append(f"{c['ref']} [{c['status']}]{prac}{date} {c['text']}{note}")
     return "\n".join(lines), {c["ref"]: c["status"] for c in rows}
+
+
+def practical_refs(conn, project_id) -> set[str]:
+    rows = conn.execute("select ref from claims where project_id=%s and category='practical'", (project_id,)).fetchall()
+    return {r["ref"] for r in rows}
+
+
+def mark_needs_check(scenes: list[dict], practical: set[str]) -> int:
+    """Fiyat/saat/ulaşım gibi değişebilen bilgi içeren sahneleri işaretler (yayın öncesi kullanıcı kontrolü)."""
+    n = 0
+    for sc in scenes:
+        sc["needs_check"] = bool(set(sc.get("claim_refs") or []) & practical)
+        n += sc["needs_check"]
+    return n
 
 
 SCENE_SCHEMA = """{"voiceover": "narration text spoken in this scene",
@@ -57,14 +72,15 @@ SCENE_SCHEMA = """{"voiceover": "narration text spoken in this scene",
  "disputed": false}"""
 
 
-def validate_doc(data: dict, budget: int, claim_status: dict) -> list[str]:
+def validate_doc(data: dict, budget: int, claim_status: dict, acts_order: list[str] | None = None) -> list[str]:
+    acts_order = acts_order or ACTS
     errs = []
     acts = data.get("acts")
     if not isinstance(acts, list):
         return ["'acts' listesi yok"]
     names = [a.get("act") for a in acts]
-    if names != ACTS:
-        errs.append(f"acts sırası tam olarak {ACTS} olmalı, gelen: {names}")
+    if names != acts_order:
+        errs.append(f"acts sırası tam olarak {acts_order} olmalı, gelen: {names}")
     total, n = 0, 0
     for a in acts:
         scenes = a.get("scenes") or []
@@ -233,6 +249,9 @@ def _validate_act(data: dict, n_scenes: int, words_target: int, claim_status: di
 
 def script_doc(conn, step) -> StepResult:
     p = conn.execute("select * from projects where id=%s", (step["project_id"],)).fetchone()
+    if (p.get("format") or "documentary") == "vlog":
+        from .vlog import script_vlog            # döngüsel içe aktarmayı önler
+        return script_vlog(conn, step, p)
     wpm = _setting(conn, "narration_wpm", 125)
     budget = int(float(p["target_minutes"]) * wpm)
     claims, status = _claims_block(conn, p["id"])
@@ -402,12 +421,14 @@ def _unused(scenes, claims):
     return [line for line in claims.splitlines() if line.split(" ", 1)[0] not in used]
 
 
-def _edit(conn, p, kind: str, scenes: list[dict], claims: str, status: dict, budget: int, extra_rules: str) -> tuple[list[dict], dict]:
+def _edit(conn, p, kind: str, scenes: list[dict], claims: str, status: dict, budget: int, extra_rules: str,
+          style: str | None = None) -> tuple[list[dict], dict]:
+    style = style or STYLE
     lang = LANG_NAME.get(p["language"], p["language"])
     total = sum(words(sc.get("voiceover", "")) for sc in scenes)
     nums = number_issues(scenes, claims)
     edits = llm.complete_json(conn, SYSTEM, f"""
-You are the fact-checking EDITOR of a documentary script in {lang} about: {p['topic']}.
+You are the fact-checking EDITOR of a {"travel vlog" if (p.get("format") or "") == "vlog" else "documentary"} script in {lang} about: {p['topic']}.
 
 Fix the script with minimal, targeted edits. Never shorten a scene; rewrite it at similar or greater length.
 1. NUMBERS: these scenes contain numbers that are NOT in the claims (scene: numbers): {json.dumps(nums, ensure_ascii=False)}
@@ -420,7 +441,7 @@ Fix the script with minimal, targeted edits. Never shorten a scene; rewrite it a
 4. TENSE: facts true today (e.g. UNESCO listing) use present tense ("yer alıyor"); the story uses narrative past (-dı/-di).
 {extra_rules}
 
-{STYLE}
+{style}
 
 Return JSON with scene numbers from the CURRENT list (1-based):
 {{"replace": [{{"scene": n, "voiceover": "...", "claim_refs": ["C#"]}}],
@@ -447,14 +468,14 @@ ALL CLAIMS:
     if deficit > budget * TOLERANCE:
         n_new = max(1, round(deficit / SCENE_WORDS))
         ext = llm.complete_json(conn, SYSTEM, f"""
-The documentary script in {lang} about {p['topic']} is too short: {total} words, target {budget}.
+The {"travel vlog" if (p.get("format") or "") == "vlog" else "documentary"} script in {lang} about {p['topic']} is too short: {total} words, target {budget}.
 INSERT about {n_new} NEW scenes of {SCENE_WORDS}-{SCENE_WORDS + 15} words each where they fit the story best.
 Use ONLY the UNUSED CLAIMS (new facts). A scene that repeats a fact already told will be rejected. Do not change existing scenes.
-Place each new scene where it fits CHRONOLOGICALLY.
+Place each new scene where it fits {"in the chapter (stop) the fact belongs to" if (p.get("format") or "") == "vlog" else "CHRONOLOGICALLY"}.
 Every fact and number must come from the claims.
 {extra_rules}
 
-{STYLE}
+{style}
 
 Return JSON: {{"insert_after": [{{"scene": n, "new_scene": {{"voiceover": "...", "claim_refs": ["C#"],
   "visual_description": "...", "search_keywords": ["..."], "on_screen_text": null}}}}]}}
@@ -487,17 +508,22 @@ def script_shorts(conn, step) -> StepResult:
     doc = conn.execute("select content->>'title' t from scripts where project_id=%s and kind='doc' order by version desc limit 1",
                        (p["id"],)).fetchone()
     lang = LANG_NAME.get(p["language"], p["language"])
+    vlog = (p.get("format") or "documentary") == "vlog"
+    if vlog:
+        from .vlog import STYLE_VLOG
+    style = STYLE_VLOG if vlog else STYLE
+    film = "travel vlog" if vlog else "documentary"
     prompt = f"""
 Write an independent YouTube Shorts script ({p['shorts_seconds']} seconds, vertical 9:16) in {lang}.
-Topic: {p['topic']}. The full documentary is titled: "{doc['t'] if doc else p['title']}".
+Topic: {p['topic']}. The full {film} is titled: "{doc['t'] if doc else p['title']}".
 
 Write EXACTLY {len(per_scene)} scenes with these narration lengths in words: {[round(w * LENGTH_BOOST) if i else w for i, w in enumerate(per_scene)]}.
 - Scene 1 = HOOK (about 3 seconds): instant curiosity — a shocking fact, a question or tension. It must be TRUE to the claims.
-- One focused story arc with escalating tension; it must make sense on its own.
-- Last scene: a natural line that makes viewers want the full documentary (no "like and subscribe").
+- {"The most striking places/facts of the route as a quick teaser" if vlog else "One focused story arc with escalating tension"}; it must make sense on its own.
+- Last scene: a natural line that makes viewers want the full {film} (no "like and subscribe").
 - Visuals must work in vertical framing (close-ups, details, single subjects).
 
-{STYLE}
+{style}
 
 Cite claim ids in "claim_refs". [conflict] claims only as an explicitly disputed point with "disputed": true.
 
@@ -515,8 +541,10 @@ CLAIMS:
         raise RuntimeError("Shorts senaryosu üretilemedi: " + "; ".join(errs[:5]))
     scenes, edits = _edit(conn, p, "shorts", scenes, claims, status, budget,
                           "5. This is a 45-60 s Shorts: keep scene 1 as a hook of at most 8 words. Keep 6-10 scenes.\n"
-                          "6. The last line invites to the full documentary naturally — no 'izleyin', 'hemen', 'abone ol', 'beğen'.")
+                          f"6. The last line invites to the full {film} naturally — no 'izleyin', 'hemen', 'abone ol', 'beğen'.",
+                          style=style)
     scenes, dd_notes = dedupe_scenes(scenes, int(budget * (1 - TOLERANCE)) - 10)
+    mark_needs_check(scenes, practical_refs(conn, p["id"]))
     data = {**data, "scenes": scenes, "editor_notes": edits.get("notes", []) + dd_notes}
     errs = validate_shorts(data, budget, status) + [
         f"sahne {i}: kaynakta olmayan sayı {', '.join(n)}" for i, n in number_issues(scenes, claims).items()]
@@ -541,11 +569,11 @@ def _save(conn, project_id, kind, data, scenes, wpm, errs):
         w = words(s["voiceover"])
         conn.execute(
             "insert into scenes (project_id, script_id, kind, idx, act, est_duration_sec, voiceover_text, visual_description, "
-            "camera_move, transition, music, sfx, search_keywords, claim_refs, on_screen_text, word_count) "
-            "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            "camera_move, transition, music, sfx, search_keywords, claim_refs, on_screen_text, word_count, needs_check) "
+            "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (project_id, sid, kind, i, s.get("_act"), round(w / wpm * 60, 2), s["voiceover"], s.get("visual_description"),
              s.get("camera_move"), s.get("transition"), s.get("music"), s.get("sfx"), s.get("search_keywords") or [],
-             s.get("claim_refs") or [], s.get("on_screen_text"), w))
+             s.get("claim_refs") or [], s.get("on_screen_text"), w, bool(s.get("needs_check"))))
     return version, total
 
 

@@ -19,7 +19,7 @@ function fmtSec(sec: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function SceneTable({ scenes }: { scenes: Scene[] }) {
+function SceneTable({ scenes, actTitles }: { scenes: Scene[]; actTitles?: Record<string, string> }) {
   const starts = scenes.map((_, i) => scenes.slice(0, i).reduce((a, x) => a + Number(x.est_duration_sec ?? 0), 0));
   return (
     <ol className="space-y-2">
@@ -28,7 +28,7 @@ function SceneTable({ scenes }: { scenes: Scene[] }) {
         const header = s.act !== "shorts" && s.act !== scenes[i - 1]?.act ? s.act : null;
         return (
           <li key={s.id}>
-            {header && <h3 className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-amber-300/80">{ACT_TR[header] ?? header}</h3>}
+            {header && <h3 className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-amber-300/80">{actTitles?.[header] ?? ACT_TR[header] ?? header}</h3>}
             <div className="grid gap-3 rounded-lg border border-white/5 bg-zinc-950/40 p-3 md:grid-cols-[5.5rem_1fr_16rem]">
               <div className="text-xs text-zinc-500">
                 <div className="font-mono text-sm text-zinc-300">#{s.idx}</div>
@@ -56,8 +56,9 @@ function SceneTable({ scenes }: { scenes: Scene[] }) {
   );
 }
 
-function ScriptCard({ title, script, scenes, slug, claims, canApprove, showApprove }: {
+function ScriptCard({ title, script, scenes, slug, claims, canApprove, showApprove, label }: {
   title: string; script: Script | null; scenes: Scene[]; slug: string; claims: string; canApprove: boolean; showApprove: boolean;
+  label: string;
 }) {
   if (!script) return <Card title={title}><Empty>Henüz yazılmadı.</Empty></Card>;
   const errs = script.validation.errors ?? [];
@@ -72,12 +73,13 @@ function ScriptCard({ title, script, scenes, slug, claims, canApprove, showAppro
         </div>
       )}
       <SceneEditor slug={slug} claims={claims} approved={Boolean(script.approved_at)} canApprove={canApprove && showApprove}
+                   actTitles={script.content.act_titles} label={label}
                    scenes={scenes.map((x) => ({ id: x.id, kind: x.kind, idx: x.idx, act: x.act, voiceover_text: x.voiceover_text,
                      claim_refs: x.claim_refs, visual_description: x.visual_description, word_count: x.word_count,
-                     est_duration_sec: x.est_duration_sec }))} />
+                     est_duration_sec: x.est_duration_sec, needs_check: x.needs_check }))} />
       <details className="mt-4">
         <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-300">Kamera, geçiş, müzik ve efekt planı</summary>
-        <div className="mt-2"><SceneTable scenes={scenes} /></div>
+        <div className="mt-2"><SceneTable scenes={scenes} actTitles={script.content.act_titles} /></div>
       </details>
     </Card>
   );
@@ -87,14 +89,16 @@ export async function ScriptView({ projectId, slug }: { projectId: string; slug:
   const [{ doc, shorts, docScenes, shortsScenes }, claims, review] = await Promise.all([
     getScripts(projectId), getClaimsText(projectId), getStepState(projectId, "script_review")]);
   const canApprove = review?.status === "waiting_input";
+  const label = doc?.content.format === "vlog" ? "Vlog" : "Belgesel";
+  const checks = docScenes.filter((s) => s.needs_check).length + shortsScenes.filter((s) => s.needs_check).length;
   if (!doc && !shorts) {
     return <Card title="Senaryo"><Empty>Senaryo henüz yazılmadı. Araştırma onaylandıktan sonra bulut işçisi yazacak.</Empty></Card>;
   }
   return (
     <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Belgesel sahnesi" value={docScenes.length} />
-        <Stat label="Tahmini belgesel süresi" value={doc?.est_seconds ? fmtSec(Number(doc.est_seconds)) : "—"} hint={`${doc?.word_count ?? 0} kelime · gerçek süre sesten ölçülecek`} />
+        <Stat label={`${label} sahnesi`} value={docScenes.length} />
+        <Stat label={`Tahmini ${label.toLowerCase()} süresi`} value={doc?.est_seconds ? fmtSec(Number(doc.est_seconds)) : "—"} hint={`${doc?.word_count ?? 0} kelime · gerçek süre sesten ölçülecek`} />
         <Stat label="Shorts sahnesi" value={shortsScenes.length} />
         <Stat label="Tahmini Shorts süresi" value={shorts?.est_seconds ? `${Math.round(Number(shorts.est_seconds))} sn` : "—"} hint={`${shorts?.word_count ?? 0} kelime`} />
       </div>
@@ -103,8 +107,14 @@ export async function ScriptView({ projectId, slug }: { projectId: string; slug:
           Senaryo onayınızı bekliyor. Sahneleri okuyun, gerekirse düzenleyin, sonra onaylayın. ElevenLabs metinleri onaylı hâlden üretilir.
         </p>
       )}
-      <ScriptCard title="Ana belgesel" script={doc} scenes={docScenes} slug={slug} claims={claims} canApprove={canApprove} showApprove />
-      <ScriptCard title="Shorts" script={shorts} scenes={shortsScenes} slug={slug} claims={claims} canApprove={canApprove} showApprove={false} />
+      {checks > 0 && (
+        <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200">
+          {checks} sahnede fiyat, saat veya ulaşım bilgisi var. Bu bilgiler değişebilir; seslendirmeden önce resmî
+          sitelerden kontrol edin ve gerekirse metni düzenleyin.
+        </p>
+      )}
+      <ScriptCard title={`Ana ${label.toLowerCase()}`} script={doc} scenes={docScenes} slug={slug} claims={claims} canApprove={canApprove} showApprove label={label} />
+      <ScriptCard title="Shorts" script={shorts} scenes={shortsScenes} slug={slug} claims={claims} canApprove={canApprove} showApprove={false} label={label} />
     </>
   );
 }

@@ -9,13 +9,14 @@ import { btnGhost, btnPrimary } from "./ui";
 
 export type EditableScene = {
   id: string; kind: "doc" | "shorts"; idx: number; act: string | null; voiceover_text: string; claim_refs: string[];
-  visual_description: string | null; word_count: number | null; est_duration_sec: string | null;
+  visual_description: string | null; word_count: number | null; est_duration_sec: string | null; needs_check?: boolean;
 };
 
 const ACT_TR: Record<string, string> = {
   giris: "Çarpıcı giriş", arka_plan: "Tarihsel arka plan", gelisme: "Olayların gelişimi",
   donum_noktasi: "Kritik dönüm noktası", sonuclar: "Sonuçlar", kapanis: "Güçlü kapanış", shorts: "Shorts",
 };
+const PRACTICAL_FLAG = "Kontrol edilmeli: fiyat, saat veya ulaşım bilgisi içeriyor — yayından önce resmî kaynaktan doğrulayın";
 const HEDGES = /(kaynaklara göre|anlatılana göre|araştırmalara göre|uzmanlara göre|bazı kaynaklara göre)/gi;
 // Rapor/ansiklopedi dili (worker/fds_worker/script.py report_style ile aynı kural)
 const REPORT = /\p{L}+(mıştır|miştir|muştur|müştür|maktadır|mektedir)(?=[\s.,;]|$)/giu;
@@ -28,6 +29,7 @@ function flagsFor(scenes: EditableScene[], claims: string) {
   const hedgeTotal = scenes.reduce((n, s) => n + (s.voiceover_text.match(HEDGES)?.length ?? 0), 0);
   return new Map(scenes.map((s) => {
     const f: string[] = [];
+    if (s.needs_check) f.push(PRACTICAL_FLAG);
     const nums = unsupportedNumbers(s.voiceover_text, claims);
     if (nums.length) f.push(`Kaynakta olmayan sayı: ${nums.join(", ")}`);
     const rep = s.claim_refs.filter((r) => (refScenes.get(r) ?? []).length > 1)
@@ -40,8 +42,9 @@ function flagsFor(scenes: EditableScene[], claims: string) {
   }));
 }
 
-export function SceneEditor({ slug, scenes, claims, approved, canApprove }: {
+export function SceneEditor({ slug, scenes, claims, approved, canApprove, actTitles, label = "Belgesel" }: {
   slug: string; scenes: EditableScene[]; claims: string; approved: boolean; canApprove: boolean;
+  actTitles?: Record<string, string>; label?: string;
 }) {
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<string | null>(null);
@@ -77,7 +80,7 @@ export function SceneEditor({ slug, scenes, claims, approved, canApprove }: {
           </span>
         ) : canApprove ? (
           <button className={btnPrimary} disabled={pending} onClick={() => act(() => approveScripts(slug))}>
-            Belgesel + Shorts senaryosunu onayla
+            {label} + Shorts senaryosunu onayla
           </button>
         ) : null}
       </div>
@@ -90,7 +93,7 @@ export function SceneEditor({ slug, scenes, claims, approved, canApprove }: {
           const isEditing = editing === s.id;
           return (
             <li key={s.id}>
-              {header && <h3 className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-amber-300/80">{ACT_TR[header] ?? header}</h3>}
+              {header && <h3 className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-amber-300/80">{actTitles?.[header] ?? ACT_TR[header] ?? header}</h3>}
               <div className={`rounded-lg border p-3 ${f.length ? "border-amber-500/40 bg-amber-500/[0.06]" : "border-white/5 bg-zinc-950/40"}`}>
                 <div className="mb-1 flex items-center justify-between gap-3 text-xs text-zinc-500">
                   <span><span className="font-mono text-zinc-300">#{s.idx}</span> · {s.word_count} kelime · ~{Number(s.est_duration_sec ?? 0).toFixed(0)} sn

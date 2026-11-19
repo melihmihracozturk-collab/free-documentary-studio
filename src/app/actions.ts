@@ -16,12 +16,13 @@ const NewProject = z.object({
   language: z.enum(["tr", "en"]),
   target_minutes: z.coerce.number().min(8, "En az 8 dakika").max(15, "En fazla 15 dakika"),
   style: z.string().trim().min(2).max(120),
+  format: z.enum(["documentary", "vlog"]).default("documentary"),
 });
 
 export async function createProject(_prev: FormState, form: FormData): Promise<FormState> {
   const parsed = NewProject.safeParse(Object.fromEntries(form));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Geçersiz form" };
-  const { topic, language, target_minutes, style } = parsed.data;
+  const { topic, language, target_minutes, style, format } = parsed.data;
 
   const sql = db();
   const base = slugify(topic);
@@ -34,8 +35,8 @@ export async function createProject(_prev: FormState, form: FormData): Promise<F
 
   await sql.begin(async (tx) => {
     const [p] = await tx<{ id: string }[]>`
-      insert into projects (slug, title, topic, language, target_minutes, style)
-      values (${slug}, ${topic}, ${topic}, ${language}, ${target_minutes}, ${style}) returning id`;
+      insert into projects (slug, title, topic, language, target_minutes, style, format)
+      values (${slug}, ${topic}, ${topic}, ${language}, ${target_minutes}, ${style}, ${format}) returning id`;
     await tx`select create_pipeline_job(${p.id})`;
   });
 

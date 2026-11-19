@@ -12,7 +12,12 @@ function slugify(input, max = 48) {
   return s.slice(0, max).replace(/-+$/g, "") || "belgesel";
 }
 
-const { DATABASE_URL, TOPIC, MINUTES = "11", LANGUAGE = "tr", STYLE = "Sinematik kısa belgesel" } = process.env;
+const { DATABASE_URL, TOPIC, MINUTES = "11", LANGUAGE = "tr", FORMAT = "documentary" } = process.env;
+const STYLE = process.env.STYLE || (FORMAT === "vlog" ? "Samimi gezi vlogu" : "Sinematik kısa belgesel");
+if (!["documentary", "vlog"].includes(FORMAT)) {
+  console.error("FORMAT documentary veya vlog olmalı");
+  process.exit(1);
+}
 if (!DATABASE_URL || !TOPIC) {
   console.error("DATABASE_URL ve TOPIC gerekli");
   process.exit(1);
@@ -28,8 +33,8 @@ try {
   let slug = base;
   for (let i = 2; (await sql`select 1 from projects where slug = ${slug}`).length; i++) slug = `${base}-${i}`;
   await sql.begin(async (tx) => {
-    const [p] = await tx`insert into projects (slug, title, topic, language, target_minutes, style)
-                         values (${slug}, ${TOPIC}, ${TOPIC}, ${LANGUAGE}, ${minutes}, ${STYLE}) returning id`;
+    const [p] = await tx`insert into projects (slug, title, topic, language, target_minutes, style, format)
+                         values (${slug}, ${TOPIC}, ${TOPIC}, ${LANGUAGE}, ${minutes}, ${STYLE}, ${FORMAT}) returning id`;
     await tx`select create_pipeline_job(${p.id})`;
   });
   console.log(`Proje oluşturuldu: ${slug}`);

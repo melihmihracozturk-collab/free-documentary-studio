@@ -19,6 +19,12 @@ on:
         description: "Anlatım"
         required: true
         default: "Sinematik kısa belgesel"
+      format:
+        description: "Biçim"
+        required: true
+        default: documentary
+        type: choice
+        options: [documentary, vlog]
 
 permissions:
   contents: read
@@ -41,6 +47,7 @@ jobs:
           MINUTES: ${{ inputs.minutes }}
           LANGUAGE: ${{ inputs.language }}
           STYLE: ${{ inputs.style }}
+          FORMAT: ${{ inputs.format }}
       - name: İşçiyi hemen başlat
         run: gh workflow run worker.yml --ref main -f reason=yeni-proje
         env:

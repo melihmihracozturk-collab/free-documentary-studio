@@ -89,10 +89,10 @@ def _relevant(src: S.Source, keywords: list[str]) -> bool:
 # Kaynak türüne göre metin üst sınırı ve toplam bütçe (LLM kotasını korur: ~4-5 çıkarma çağrısı)
 # Ansiklopedi maddesi başına 12k: tek uzun madde bütçeyi doldurmasın, daha çok farklı madde (kişiler, olaylar,
 # proje dilindeki Vikipedi) girsin. İttihat ve Terakki'de 30k sınırla yalnızca 3 madde girebilmişti.
-TYPE_CAP = {"encyclopedia": 12000, "academic": 4000, "archive": 3000}
+TYPE_CAP = {"encyclopedia": 12000, "academic": 4000, "archive": 3000, "guide": 12000}
 TOTAL_BUDGET = 140000
-TYPE_BUDGET = {"encyclopedia": 85000, "academic": 40000, "archive": 15000}
-TYPE_PRIORITY = {"encyclopedia": 0, "academic": 1, "archive": 2}
+TYPE_BUDGET = {"encyclopedia": 85000, "academic": 40000, "archive": 15000, "guide": 36000}  # guide: Wikivoyage (vlog)
+TYPE_PRIORITY = {"encyclopedia": 0, "guide": 0, "academic": 1, "archive": 2}
 
 
 MEDIA_WORK = re.compile(
@@ -174,7 +174,7 @@ def select_sources(found: list[S.Source], keywords: list[str], dropped: list | N
     unique = _interleave(unique)
     # Ansiklopedi bütçesi önce konuyla en yoğun ilgili maddelere gider (Talaat Pasha > yan örgüt maddesi)
     score = {id(s): relevance_score(s, keywords) for s in unique}
-    unique.sort(key=lambda s: -score[id(s)] if s.source_type == "encyclopedia" else 0)
+    unique.sort(key=lambda s: -score[id(s)] if s.source_type in ("encyclopedia", "guide") else 0)
     # Tür başına bütçe: uzun ansiklopedi maddeleri akademik kaynakları dışarıda bırakamaz (1453'te 22 → 4 kaynak olmuştu)
     used = {t: 0 for t in TYPE_BUDGET}
     out, total = [], 0
@@ -190,8 +190,30 @@ def select_sources(found: list[S.Source], keywords: list[str], dropped: list | N
 
 
 # ----------------------------------------------------------------- 1) toplama
+def is_vlog(p) -> bool:
+    return (p.get("format") or "documentary") == "vlog"
+
+
+VLOG_PLAN = """
+Plan research for a {minutes}-minute first-person TRAVEL VLOG (YouTube) built from archive photos and narration.
+Topic: {topic}
+Narration language: {lang}
+
+Pick 4-7 STOPS (cities, sights or places) that best fit the topic, in a sensible travel route order.
+Return JSON:
+{{"stops": [{{"name_en": "English name as on Wikipedia (e.g. Colosseum)", "name_native": "name in {lang}"}}],
+  "destination_en": "the main destination in English (e.g. Italy, Rome)",
+  "queries_en": [3-4 short English queries for academic databases on the destination's history/culture],
+  "queries_native": [1-2 short queries in {lang}],
+  "keywords": [5-10 distinctive keywords, English and native spellings],
+  "core_keywords": [destination + every stop name, English and native spellings]}}
+"""
+
+
 def collect(conn, step) -> StepResult:
     p = _project(conn, step["project_id"])
+    if is_vlog(p):
+        return _collect_vlog(conn, step, p)
     lang = p["language"]
     plan = llm.complete_json(conn, SYSTEM, f"""
 Plan research for a {p['target_minutes']}-minute documentary.
@@ -231,6 +253,46 @@ Return JSON:
         run("archive", S.internet_archive, q, 5)
         run("europeana", S.europeana, q, 5)
 
+    return _store_sources(conn, step, p, plan, found, keywords, errors)
+
+
+def _collect_vlog(conn, step, p) -> StepResult:
+    """Vlog: hedefin ve her durağın Vikipedi + Wikivoyage maddeleri (+ az sayıda akademik kaynak)."""
+    lang = p["language"]
+    plan = llm.complete_json(conn, SYSTEM, VLOG_PLAN.format(minutes=p["target_minutes"], topic=p["topic"],
+                                                            lang=LANG_NAME.get(lang, lang)),
+                             task="research_plan_vlog", temperature=0.2)
+    stops = [x for x in (plan.get("stops") or []) if isinstance(x, dict) and x.get("name_en")][:7]
+    dest = plan.get("destination_en") or p["topic"]
+    keywords = list(dict.fromkeys((plan.get("core_keywords") or []) + [dest] + [x["name_en"] for x in stops]
+                                  + [x.get("name_native") or "" for x in stops]))
+    keywords = [k for k in keywords if k] or p["topic"].split()
+    found: list[S.Source] = []
+    errors: list[str] = []
+
+    def run(name, fn, *args):
+        try:
+            found.extend(fn(*args))
+        except Exception as e:  # noqa: BLE001 — bir kaynak çökerse diğerleri sürer
+            errors.append(f"{name}: {type(e).__name__}: {str(e)[:160]}")
+
+    run("wikivoyage", S.wikivoyage, dest, 1)
+    run("wikipedia:en", S.wikipedia, dest, "en", 1)
+    for st in stops:
+        run("wikipedia:en", S.wikipedia, st["name_en"], "en", 1)
+        run("wikivoyage", S.wikivoyage, st["name_en"], 1)
+    if lang != "en":
+        for st in stops[:3]:
+            if st.get("name_native"):
+                run(f"wikipedia:{lang}", S.wikipedia, st["name_native"], lang, 1)
+    for q in (plan.get("queries_en") or [])[:2]:
+        run("crossref", S.crossref, q, 4)
+        run("openalex", S.openalex, q, 4)
+    plan["stops"] = stops
+    return _store_sources(conn, step, p, plan, found, keywords, errors)
+
+
+def _store_sources(conn, step, p, plan, found, keywords, errors) -> StepResult:
     dropped: list = []
     unique = select_sources(found, keywords, dropped)
     print(f"[research] bulunan {len(found)}, seçilen {len(unique)}", flush=True)
@@ -283,12 +345,21 @@ def _chunks(rows):
         yield chunk
 
 
+VLOG_NEEDS = """the factual claims a first-person TRAVEL VLOG on this topic would need, for each place:
+what it is and why it matters, short history highlights (dates, builders, events), what visitors see there
+(architecture, artworks, views), local culture and food, and PRACTICAL information (ticket prices, opening hours,
+transport, booking, best time to visit, safety tips). Aim for 20-35 claims; skip off-topic material.
+Practical claims get category "practical"; if the source gives a year for a price or rule, put it in "event_date"."""
+
+DOC_NEEDS = """the factual claims a documentary on this topic would need:
+dates and sequence of events, people, places, numbers, causes, consequences, eyewitness accounts,
+scientific findings and scholarly debates. Aim for 15-30 claims if the sources allow; skip off-topic material."""
+
+
 def _extract(conn, p, lang, chunk):
     return llm.complete_json(conn, SYSTEM, f"""
 Topic: {p['topic']}
-From the SOURCES below, extract the factual claims a documentary on this topic would need:
-dates and sequence of events, people, places, numbers, causes, consequences, eyewitness accounts,
-scientific findings and scholarly debates. Aim for 15-30 claims if the sources allow; skip off-topic material.
+From the SOURCES below, extract {VLOG_NEEDS if is_vlog(p) else DOC_NEEDS}
 
 Rules:
 - Every claim must be supported by a VERBATIM quote (5-30 words, copied exactly, original language) from one source.
@@ -296,7 +367,7 @@ Rules:
 - Write "text" in {lang}, one fact per claim.
 - If sources disagree or mention a debate (e.g. different dates or numbers), extract each version as its own claim.
 
-Return JSON: {{"claims": [{{"text": "...", "category": "time|person|place|number|cause|consequence|debate|context",
+Return JSON: {{"claims": [{{"text": "...", "category": "time|person|place|number|cause|consequence|debate|context|practical",
   "importance": 1-3, "event_date": "free text or null", "source_ref": "S#", "quote": "..."}}]}}
 
 SOURCES:

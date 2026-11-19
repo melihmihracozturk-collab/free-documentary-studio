@@ -1,6 +1,6 @@
 export const NAV = [
   { href: "/", label: "Dashboard", icon: "LayoutDashboard" },
-  { href: "/yeni", label: "Yeni Belgesel", icon: "PlusCircle" },
+  { href: "/yeni", label: "Yeni Proje", icon: "PlusCircle" },
   { href: "/arastirma", label: "Araştırma", icon: "Search" },
   { href: "/senaryo", label: "Senaryo", icon: "ScrollText" },
   { href: "/gorseller", label: "Görsel Arşivi", icon: "Images" },

@@ -1,5 +1,5 @@
 // Bir projenin üretim hattını belirtilen adımdan itibaren yeniden başlatır.
-// Kullanım: DATABASE_URL=... SLUG=... FROM_STEP=research_collect node scripts/rerun.mjs
+// Kullanım: DATABASE_URL=... SLUG=... FROM_STEP=research_collect [FORMAT=vlog] node scripts/rerun.mjs
 import postgres from "postgres";
 
 if (process.env.DATABASE_URL) process.env.DATABASE_URL = process.env.DATABASE_URL.trim();
@@ -10,6 +10,11 @@ try {
   const [j] = await sql`select j.id from jobs j join projects p on p.id = j.project_id
                         where p.slug = ${SLUG} order by j.created_at desc limit 1`;
   if (!j) throw new Error(`Proje veya iş bulunamadı: ${SLUG}`);
+  if (["documentary", "vlog"].includes(process.env.FORMAT ?? "")) {
+    const style = process.env.FORMAT === "vlog" ? "Samimi gezi vlogu" : "Sinematik kısa belgesel";
+    await sql`update projects set format = ${process.env.FORMAT}, style = ${style} where slug = ${SLUG}`;
+    console.log(`${SLUG}: biçim → ${process.env.FORMAT}`);
+  }
   const [r] = await sql`select reset_from_step(${j.id}, ${FROM_STEP}) as n`;
   console.log(`${SLUG}: ${FROM_STEP} ve sonrası yeniden kuyrukta (${r.n} adım).`);
 } catch (e) {

@@ -6,7 +6,7 @@ export default async function NewDocumentary() {
   const settings = await getSettings();
   return (
     <>
-      <PageHeader title="Yeni Belgesel"
+      <PageHeader title="Yeni Proje"
                   description="Yalnızca konuyu girin. Araştırmadan render'a kadar 15 aşama bulutta sırayla yürütülür; sizden yalnızca araştırma onayı ve seslendirme dosyaları istenir." />
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2"><NewProjectForm defaultMinutes={Number(settings.default_minutes ?? 11)} /></Card>

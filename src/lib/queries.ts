@@ -14,6 +14,7 @@ export type Project = {
   target_minutes: string;
   shorts_seconds: number;
   style: string;
+  format: "documentary" | "vlog";
   status: string;
   created_at: Date;
   updated_at: Date;
@@ -175,11 +176,12 @@ export type Scene = {
   id: string; kind: "doc" | "shorts"; idx: number; act: string | null; est_duration_sec: string | null;
   voiceover_text: string; visual_description: string | null; camera_move: string | null; transition: string | null;
   music: string | null; sfx: string | null; search_keywords: string[]; claim_refs: string[];
-  on_screen_text: string | null; word_count: number | null;
+  on_screen_text: string | null; word_count: number | null; needs_check: boolean;
 };
 export type Script = {
   id: string; kind: "doc" | "shorts"; version: number; approved_at: Date | null; word_count: number | null; est_seconds: string | null;
-  voiceover_text: string | null; content: { title?: string; logline?: string }; validation: { errors?: string[]; ok?: boolean };
+  voiceover_text: string | null;
+  content: { title?: string; logline?: string; format?: "documentary" | "vlog"; act_titles?: Record<string, string> }; validation: { errors?: string[]; ok?: boolean };
   created_at: Date;
 };
 
@@ -206,7 +208,7 @@ export async function getScripts(projectId: string) {
       from scripts where project_id = ${projectId} order by kind, version desc`;
   const scenes = await sql<Scene[]>`
     select id, kind, idx, act, est_duration_sec, voiceover_text, visual_description, camera_move, transition, music, sfx,
-           search_keywords, claim_refs, on_screen_text, word_count
+           search_keywords, claim_refs, on_screen_text, word_count, needs_check
       from scenes where project_id = ${projectId} order by kind, idx`;
   return {
     doc: scripts.find((s) => s.kind === "doc") ?? null,

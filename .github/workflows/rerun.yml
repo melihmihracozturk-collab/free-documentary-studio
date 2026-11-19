@@ -13,6 +13,12 @@ on:
         default: research_collect
         type: choice
         options: [research_collect, research_verify, research_report, script_doc, script_shorts, visual_plan, asset_match, subtitles, render_doc, render_shorts]
+      format:
+        description: "Biçimi değiştir (isteğe bağlı)"
+        required: false
+        default: keep
+        type: choice
+        options: [keep, documentary, vlog]
 
 permissions:
   contents: read
@@ -33,6 +39,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SLUG: ${{ inputs.slug }}
           FROM_STEP: ${{ inputs.from_step }}
+          FORMAT: ${{ inputs.format }}
       - name: İşçiyi başlat
         run: gh workflow run worker.yml --ref main -f reason=rerun
         env:

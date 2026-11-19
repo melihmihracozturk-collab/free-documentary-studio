@@ -36,8 +36,13 @@ def _clean(s: str | None) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
-def wikipedia(query: str, lang: str = "en", limit: int = 3) -> list[Source]:
-    base = f"https://{lang}.wikipedia.org/w/api.php"
+def wikivoyage(query: str, limit: int = 2) -> list[Source]:
+    """Wikivoyage (CC BY-SA): gezi rehberi — görülecek yerler, ulaşım, pratik bilgiler. Vlog projelerinde kullanılır."""
+    return wikipedia(query, "en", limit, site="wikivoyage")
+
+
+def wikipedia(query: str, lang: str = "en", limit: int = 3, site: str = "wikipedia") -> list[Source]:
+    base = f"https://{lang}.{site}.org/w/api.php"
     hits = http.get_json(base, params={"action": "query", "list": "search", "srsearch": query,
                                        "srlimit": limit, "format": "json"})["query"]["search"]
     out = []
@@ -50,9 +55,11 @@ def wikipedia(query: str, lang: str = "en", limit: int = 3) -> list[Source]:
             text = re.split(r"\n==\s*(References|See also|External links|Kaynakça|Dış bağlantılar|Ayrıca bakınız|Notlar)\s*==", text)[0]
             text = re.sub(r"\n+", "\n", text).strip()[:WIKI_MAX_TEXT]
             if len(text) >= MIN_TEXT:
-                out.append(Source(url=f"https://{lang}.wikipedia.org/wiki/{quote(p['title'].replace(' ', '_'))}",
-                                  title=p["title"], publisher="Wikipedia", source_type="encyclopedia",
-                                  collector="wikipedia", text=text, lang=lang))
+                voyage = site == "wikivoyage"
+                out.append(Source(url=f"https://{lang}.{site}.org/wiki/{quote(p['title'].replace(' ', '_'))}",
+                                  title=p["title"], publisher="Wikivoyage" if voyage else "Wikipedia",
+                                  source_type="guide" if voyage else "encyclopedia",
+                                  collector=site, text=text, lang=lang))
     return out
 
 
