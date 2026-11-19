@@ -44,14 +44,24 @@ def _claims_block(conn, project_id):
     for c in rows:
         date = f" ({c['event_date']})" if c["event_date"] else ""
         note = f" — CONFLICT: {c['conflict_note']}" if c["status"] == "conflict" else ""
-        prac = " [practical]" if c.get("category") == "practical" else ""
+        prac = " [practical]" if is_practical(c["text"], c.get("category")) else ""
         lines.append(f"{c['ref']} [{c['status']}]{prac}{date} {c['text']}{note}")
     return "\n".join(lines), {c["ref"]: c["status"] for c in rows}
 
 
+# Kategoriye güvenilmez (model fiyatı "number" diye etiketleyebiliyor): metinden de tanınır.
+PRACTICAL_RE = re.compile(
+    r"(€|\beuro|\bavro|\bbilet|ücret|fiyat|rezerv|açılış saat|kapanış saat|\b\d{1,2}[:.]\d{2}\b|saatleri arasında|"
+    r"\btren|otobüs|vapur|vaporetto|otopark|konaklama vergisi|\bceza|yasak|emanet|\bkartı?\b)", re.I)
+
+
+def is_practical(text: str, category: str | None = None) -> bool:
+    return category == "practical" or bool(PRACTICAL_RE.search(text or ""))
+
+
 def practical_refs(conn, project_id) -> set[str]:
-    rows = conn.execute("select ref from claims where project_id=%s and category='practical'", (project_id,)).fetchall()
-    return {r["ref"] for r in rows}
+    rows = conn.execute("select ref, text, category from claims where project_id=%s", (project_id,)).fetchall()
+    return {r["ref"] for r in rows if is_practical(r["text"], r["category"])}
 
 
 def mark_needs_check(scenes: list[dict], practical: set[str]) -> int:
@@ -544,14 +554,50 @@ CLAIMS:
                           f"6. The last line invites to the full {film} naturally — no 'izleyin', 'hemen', 'abone ol', 'beğen'.",
                           style=style)
     scenes, dd_notes = dedupe_scenes(scenes, int(budget * (1 - TOLERANCE)) - 10)
+    scenes, short_note = _shorten(conn, p, scenes, budget, claims, style)
     mark_needs_check(scenes, practical_refs(conn, p["id"]))
-    data = {**data, "scenes": scenes, "editor_notes": edits.get("notes", []) + dd_notes}
+    data = {**data, "scenes": scenes, "editor_notes": edits.get("notes", []) + dd_notes + short_note}
     errs = validate_shorts(data, budget, status) + [
         f"sahne {i}: kaynakta olmayan sayı {', '.join(n)}" for i, n in number_issues(scenes, claims).items()]
     version, total = _save(conn, p["id"], "shorts", data, scenes, wpm, errs)
     return StepResult(output={"version": version, "scenes": len(scenes), "words": total,
                               "est_seconds": round(total / wpm * 60, 1), "budget_words": budget,
                               "editor_notes": edits.get("notes", [])[:10], "validation_errors": errs})
+
+
+def _shorten(conn, p, scenes: list[dict], budget: int, claims: str, style: str) -> tuple[list[dict], list[str]]:
+    """Shorts hedefi aşıyorsa sahneleri kısaltır (60 sn sınırı: render'da hızlandırma en fazla %15).
+
+    Sahne sayısı ve iddia kimlikleri korunur; kaynakta olmayan sayı ekleyen veya hâlâ uzun kalan sonuç reddedilir.
+    """
+    total = sum(words(x.get("voiceover", "")) for x in scenes)
+    hi = int(budget * (1 + TOLERANCE))
+    if total <= hi:
+        return scenes, []
+    lang = LANG_NAME.get(p["language"], p["language"])
+    per = [max(4, round(words(x.get("voiceover", "")) * budget / total)) for x in scenes]
+    out = llm.complete_json(conn, SYSTEM, f"""
+This YouTube Shorts script in {lang} is too long: {total} words, it must be about {budget} words to fit 60 seconds.
+Shorten each scene to the target word count below. Keep the meaning, order, hook and closing line; keep facts and numbers
+exactly as they are (drop a detail rather than change it). Do not add new facts.
+Target words per scene: {per}
+
+{style}
+
+Return JSON: {{"scenes": ["shortened narration of scene 1", "... scene 2", ...]}}  (exactly {len(scenes)} items)
+
+SCENES:
+{chr(10).join(f"{i}. {x.get('voiceover', '')}" for i, x in enumerate(scenes, 1))}
+""", task="shorts_shorten", temperature=0.3)
+    texts = out.get("scenes") or []
+    if len(texts) != len(scenes) or not all(isinstance(t, str) and t.strip() for t in texts):
+        return scenes, ["kısaltma reddedildi: sahne sayısı uyuşmadı"]
+    new = [{**x, "voiceover": t.strip()} for x, t in zip(scenes, texts)]
+    new_total = sum(words(x["voiceover"]) for x in new)
+    flat = lambda sc: {n for v in number_issues(sc, claims).values() for n in v}      # noqa: E731
+    if new_total > hi or not flat(new) <= flat(scenes):                              # yeni kaynaksız sayı eklenmemeli
+        return scenes, [f"kısaltma reddedildi: {new_total} kelime veya kaynakta olmayan sayı"]
+    return new, [f"Shorts kısaltıldı: {total} → {new_total} kelime"]
 
 
 def _save(conn, project_id, kind, data, scenes, wpm, errs):

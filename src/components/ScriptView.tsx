@@ -1,6 +1,7 @@
 import { Card, Empty, Stat } from "./ui";
 import { getClaimsText, getScripts, getStepState, type Scene, type Script } from "@/lib/queries";
 import { SceneEditor } from "./SceneEditor";
+import { needsCheck, practicalRefs } from "@/lib/practical";
 
 const ACT_TR: Record<string, string> = {
   giris: "Çarpıcı giriş", arka_plan: "Tarihsel arka plan", gelisme: "Olayların gelişimi",
@@ -90,7 +91,8 @@ export async function ScriptView({ projectId, slug }: { projectId: string; slug:
     getScripts(projectId), getClaimsText(projectId), getStepState(projectId, "script_review")]);
   const canApprove = review?.status === "waiting_input";
   const label = doc?.content.format === "vlog" ? "Vlog" : "Belgesel";
-  const checks = docScenes.filter((s) => s.needs_check).length + shortsScenes.filter((s) => s.needs_check).length;
+  const refs = practicalRefs(claims);
+  const checks = [...docScenes, ...shortsScenes].filter((s) => needsCheck(s, refs)).length;
   if (!doc && !shorts) {
     return <Card title="Senaryo"><Empty>Senaryo henüz yazılmadı. Araştırma onaylandıktan sonra bulut işçisi yazacak.</Empty></Card>;
   }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, Check, Pencil, Trash2 } from "lucide-react";
 import { approveScripts, deleteScene, unapproveScripts, updateSceneText } from "@/app/actions";
 import { unsupportedNumbers } from "@/lib/numbers";
+import { needsCheck, practicalRefs } from "@/lib/practical";
 import { btnGhost, btnPrimary } from "./ui";
 
 export type EditableScene = {
@@ -26,10 +27,11 @@ const reportStyle = (t: string) => (t.match(REPORT)?.length ?? 0) >= 2 || /çeli
 function flagsFor(scenes: EditableScene[], claims: string) {
   const refScenes = new Map<string, number[]>();
   scenes.forEach((s) => s.claim_refs.forEach((r) => refScenes.set(r, [...(refScenes.get(r) ?? []), s.idx])));
+  const practical = practicalRefs(claims);
   const hedgeTotal = scenes.reduce((n, s) => n + (s.voiceover_text.match(HEDGES)?.length ?? 0), 0);
   return new Map(scenes.map((s) => {
     const f: string[] = [];
-    if (s.needs_check) f.push(PRACTICAL_FLAG);
+    if (needsCheck(s, practical)) f.push(PRACTICAL_FLAG);
     const nums = unsupportedNumbers(s.voiceover_text, claims);
     if (nums.length) f.push(`Kaynakta olmayan sayı: ${nums.join(", ")}`);
     const rep = s.claim_refs.filter((r) => (refScenes.get(r) ?? []).length > 1)

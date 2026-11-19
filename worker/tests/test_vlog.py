@@ -138,3 +138,28 @@ def test_vlog_budget_keeps_a_guide_per_stop():
               for i in range(5)]
     assert len(research.select_sources(guides, ["Rome"])) == 3                         # belgesel bütçesi: 3 rehber
     assert len(research.select_sources(guides, ["Rome"], budget=research.VLOG_BUDGET)) == 5
+
+
+def test_practical_detected_from_text_even_without_category(conn):
+    pid, _ = _vlog_project(conn)
+    for ref, text, cat in (("C1", "Pompei bileti 18 Euro'dur.", "number"), ("C2", "Venedik'te mayoyla dolaşmak yasaktır.", "context"),
+                           ("C3", "Kolezyum MS 80'de açıldı.", "time")):
+        conn.execute("insert into claims (project_id, ref, text, status, category) values (%s,%s,%s,'weak',%s)",
+                     (pid, ref, text, cat))
+    assert script.practical_refs(conn, pid) == {"C1", "C2"}
+    block, _ = script._claims_block(conn, pid)
+    assert "C1 [weak] [practical]" in block and "C3 [weak] Kolezyum" in block
+
+
+def test_shorts_shortened_when_too_long(conn, monkeypatch):
+    pid, _ = _vlog_project(conn)
+    p = conn.execute("select * from projects where id=%s", (pid,)).fetchone()
+    long = [{"voiceover": " ".join(["kelime"] * 17), "claim_refs": []} for _ in range(8)]       # 136 kelime
+    monkeypatch.setenv("FDS_FAKE_LLM", "1")
+    monkeypatch.setattr(llm, "fake_responder", lambda sys, prompt: {"scenes": [" ".join(["kısa"] * 12)] * 8})
+    out, note = script._shorten(conn, p, long, 100, "", "")
+    assert sum(script.words(x["voiceover"]) for x in out) == 96 and "kısaltıldı" in note[0]
+    monkeypatch.setattr(llm, "fake_responder", lambda sys, prompt: {"scenes": ["çok kısa"] * 3})   # sahne sayısı tutmaz
+    long2 = [{"voiceover": " ".join(["sözcük"] * 17), "claim_refs": []} for _ in range(8)]   # farklı istem (önbellek)
+    out, note = script._shorten(conn, p, long2, 100, "x", "")
+    assert out == long2 and "reddedildi" in note[0]
