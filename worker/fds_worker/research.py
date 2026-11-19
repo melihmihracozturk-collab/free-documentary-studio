@@ -89,7 +89,7 @@ def _relevant(src: S.Source, keywords: list[str]) -> bool:
 # Kaynak türüne göre metin üst sınırı ve toplam bütçe (LLM kotasını korur: ~4-5 çıkarma çağrısı)
 # Ansiklopedi maddesi başına 12k: tek uzun madde bütçeyi doldurmasın, daha çok farklı madde (kişiler, olaylar,
 # proje dilindeki Vikipedi) girsin. İttihat ve Terakki'de 30k sınırla yalnızca 3 madde girebilmişti.
-TYPE_CAP = {"encyclopedia": 12000, "academic": 4000, "archive": 3000, "guide": 12000}
+TYPE_CAP = {"encyclopedia": 12000, "academic": 4000, "archive": 3000, "guide": 10000}
 TOTAL_BUDGET = 140000
 TYPE_BUDGET = {"encyclopedia": 85000, "academic": 40000, "archive": 15000, "guide": 36000}  # guide: Wikivoyage (vlog)
 # Vlog: her durağın rehberi (pratik bilgi) girsin; akademik kaynak ikinci planda
