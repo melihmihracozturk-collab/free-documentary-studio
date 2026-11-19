@@ -131,3 +131,10 @@ def test_documentary_still_default(conn):
     assert conn.execute("select format from projects where id=%s", (pid,)).fetchone()["format"] == "documentary"
     with pytest.raises(Exception):
         conn.execute("update projects set format='podcast' where id=%s", (pid,))
+
+
+def test_vlog_budget_keeps_a_guide_per_stop():
+    guides = [S.Source(f"g{i}", f"Stop{i} Rome", "Wikivoyage", "guide", "wikivoyage", "Rome tickets hours. \n" * 900)
+              for i in range(5)]
+    assert len(research.select_sources(guides, ["Rome"])) == 3                         # belgesel bütçesi: 3 rehber
+    assert len(research.select_sources(guides, ["Rome"], budget=research.VLOG_BUDGET)) == 5

@@ -92,6 +92,8 @@ def _relevant(src: S.Source, keywords: list[str]) -> bool:
 TYPE_CAP = {"encyclopedia": 12000, "academic": 4000, "archive": 3000, "guide": 12000}
 TOTAL_BUDGET = 140000
 TYPE_BUDGET = {"encyclopedia": 85000, "academic": 40000, "archive": 15000, "guide": 36000}  # guide: Wikivoyage (vlog)
+# Vlog: her durağın rehberi (pratik bilgi) girsin; akademik kaynak ikinci planda
+VLOG_BUDGET = {"encyclopedia": 60000, "academic": 15000, "archive": 5000, "guide": 60000}
 TYPE_PRIORITY = {"encyclopedia": 0, "guide": 0, "academic": 1, "archive": 2}
 
 
@@ -153,7 +155,8 @@ def _interleave(srcs: list[S.Source]) -> list[S.Source]:
     return out
 
 
-def select_sources(found: list[S.Source], keywords: list[str], dropped: list | None = None) -> list[S.Source]:
+def select_sources(found: list[S.Source], keywords: list[str], dropped: list | None = None,
+                   budget: dict | None = None) -> list[S.Source]:
     """Tekilleştir (URL, DOI, başlık), alakasızları ele, metni kırp, toplam bütçeye sığdır.
 
     dropped verilirse elenen her kaynak için (başlık, neden) eklenir (tanılama için).
@@ -176,11 +179,12 @@ def select_sources(found: list[S.Source], keywords: list[str], dropped: list | N
     score = {id(s): relevance_score(s, keywords) for s in unique}
     unique.sort(key=lambda s: -score[id(s)] if s.source_type in ("encyclopedia", "guide") else 0)
     # Tür başına bütçe: uzun ansiklopedi maddeleri akademik kaynakları dışarıda bırakamaz (1453'te 22 → 4 kaynak olmuştu)
-    used = {t: 0 for t in TYPE_BUDGET}
+    budget = budget or TYPE_BUDGET
+    used = {t: 0 for t in budget}
     out, total = [], 0
     for s in unique:
-        t = s.source_type if s.source_type in TYPE_BUDGET else "archive"
-        if used[t] + len(s.text) > TYPE_BUDGET[t] or total + len(s.text) > TOTAL_BUDGET:
+        t = s.source_type if s.source_type in budget else "archive"
+        if used[t] + len(s.text) > budget[t] or total + len(s.text) > TOTAL_BUDGET:
             drop.append((s.collector, s.title, "bütçe"))
             continue
         out.append(s)
@@ -294,7 +298,7 @@ def _collect_vlog(conn, step, p) -> StepResult:
 
 def _store_sources(conn, step, p, plan, found, keywords, errors) -> StepResult:
     dropped: list = []
-    unique = select_sources(found, keywords, dropped)
+    unique = select_sources(found, keywords, dropped, VLOG_BUDGET if is_vlog(p) else None)
     print(f"[research] bulunan {len(found)}, seçilen {len(unique)}", flush=True)
     for c, t, why in dropped:
         print(f"[research]   elendi ({why}) {c}: {t[:90]}", flush=True)
