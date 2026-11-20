@@ -17,7 +17,7 @@ from difflib import SequenceMatcher
 
 from psycopg.types.json import Jsonb
 
-from . import llm, sources as S
+from . import llm, sources as S, web
 from .handlers import StepResult
 
 CHUNK_CHARS = 24000
@@ -89,11 +89,12 @@ def _relevant(src: S.Source, keywords: list[str]) -> bool:
 # Kaynak türüne göre metin üst sınırı ve toplam bütçe (LLM kotasını korur: ~4-5 çıkarma çağrısı)
 # Ansiklopedi maddesi başına 12k: tek uzun madde bütçeyi doldurmasın, daha çok farklı madde (kişiler, olaylar,
 # proje dilindeki Vikipedi) girsin. İttihat ve Terakki'de 30k sınırla yalnızca 3 madde girebilmişti.
-TYPE_CAP = {"encyclopedia": 12000, "academic": 4000, "archive": 3000, "guide": 10000}
-TOTAL_BUDGET = 140000
-TYPE_BUDGET = {"encyclopedia": 85000, "academic": 40000, "archive": 15000, "guide": 36000}  # guide: Wikivoyage (vlog)
+TYPE_CAP = {"encyclopedia": 12000, "academic": 4000, "archive": 3000, "guide": 10000, "news": 5000, "official": 6000}
+TOTAL_BUDGET = 170000
+TYPE_BUDGET = {"encyclopedia": 85000, "academic": 40000, "archive": 15000, "guide": 36000,
+               "news": 45000, "official": 24000}   # news/official: Vikipedi kaynakçası + GDELT (güncel konular)  # guide: Wikivoyage (vlog)
 # Vlog: her durağın rehberi (pratik bilgi) girsin; akademik kaynak ikinci planda
-VLOG_BUDGET = {"encyclopedia": 60000, "academic": 15000, "archive": 5000, "guide": 60000}
+VLOG_BUDGET = {"encyclopedia": 60000, "academic": 15000, "archive": 5000, "guide": 60000, "news": 10000, "official": 10000}
 TYPE_PRIORITY = {"encyclopedia": 0, "guide": 0, "academic": 1, "archive": 2}
 
 
@@ -249,6 +250,13 @@ Return JSON:
     if lang != "en":
         for q in q_native[:2]:
             run(f"wikipedia:{lang}", S.wikipedia, q, lang, 2)
+    # Açık web: konunun ana Vikipedi maddelerinin kaynakçasındaki sayfalar (resmî siteler, haberler, röportajlar)
+    # ve GDELT haber arşivi. Güncel konularda asıl bilgi buradadır; her alan adı ayrı bağımsız kaynak sayılır.
+    wikis = sorted([s for s in found if s.collector == "wikipedia" and _relevant(s, keywords)],
+                   key=lambda s: -relevance_score(s, keywords))[:2]
+    for w in wikis:
+        run(f"web:{w.lang}", web.wiki_refs, w.title, w.lang, 10)
+    run("gdelt", web.gdelt, (plan.get("core_keywords") or [p["topic"]])[0], 8)
     for q in q_en[:3]:
         run("crossref", S.crossref, q, 5)
         run("openalex", S.openalex, q, 5)

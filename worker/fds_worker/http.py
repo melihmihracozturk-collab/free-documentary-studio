@@ -11,7 +11,7 @@ UA = "FreeDocumentaryStudio/0.3 (open-source documentary research bot" + (
     f"; {os.environ['FDS_CONTACT']})" if os.environ.get("FDS_CONTACT") else ")"
 )
 MIN_INTERVAL = 1.0      # aynı sunucuya iki istek arasında en az 1 sn
-HOST_INTERVAL = {"collectionapi.metmuseum.org": 0.15}   # Met API saniyede 80 isteğe izin veriyor
+HOST_INTERVAL = {"collectionapi.metmuseum.org": 0.15, "api.gdeltproject.org": 5.0}   # GDELT: 5 sn'de bir istek   # Met API saniyede 80 isteğe izin veriyor
 MAX_RETRY_WAIT = 60     # Retry-After bundan uzunsa beklemeyiz (ör. günlük kota bitti)
 
 _last: dict[str, float] = {}

@@ -8,7 +8,7 @@ import re
 
 import pytest
 
-from fds_worker import handlers as H
+from fds_worker import web, handlers as H
 from fds_worker import llm, research, script, sources as S
 from fds_worker.main import run
 
@@ -159,6 +159,8 @@ def fake(monkeypatch):
     monkeypatch.setattr(S, "library_of_congress", lambda q, limit=5: [srcs[4]])
     monkeypatch.setattr(S, "internet_archive", lambda q, limit=5: (_ for _ in ()).throw(RuntimeError("ağ hatası")))
     monkeypatch.setattr(S, "europeana", lambda q, limit=5: [])
+    monkeypatch.setattr(web, "wiki_refs", lambda title, lang="en", limit=12: [])
+    monkeypatch.setattr(web, "gdelt", lambda q, limit=8: [])
     return f
 
 
