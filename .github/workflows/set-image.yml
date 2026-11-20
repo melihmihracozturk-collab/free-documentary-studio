@@ -19,6 +19,11 @@ on:
       file:
         description: "Commons dosya adları, | ile ayrılmış (ör. File:Talat Pasha.jpg|File:Cemâl Paşa.jpg)"
         required: true
+      force:
+        description: "Görsel onayı verilmiş olsa da değiştir (sonra render'ı yeniden çalıştırın)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -43,6 +48,7 @@ jobs:
           KIND: ${{ inputs.kind }}
           IDX: ${{ inputs.idx }}
           FILE: ${{ inputs.file }}
+          FORCE: ${{ inputs.force }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}

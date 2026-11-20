@@ -68,7 +68,12 @@ def word_times(scene_texts: list[str], words: list[tuple[str, float, float]], bo
     times: list[tuple[float, float] | None] = [None] * len(script)
     for a, b, size in SequenceMatcher(None, norm_s, norm_w, autojunk=False).get_matching_blocks():
         for k in range(size):
-            times[a + k] = (words[b + k][1], words[b + k][2])
+            st, en = words[b + k][1], words[b + k][2]
+            lo, hi = bounds[script[a + k][1]]
+            # Yaygın bir kelime ("için", "ve") sesin başka yerindeki aynı kelimeyle eşleşebilir; sahnesinin
+            # zaman aralığının dışına düşen eşleşme yok sayılır (yoksa altyazı yanlış sahnede görünür)
+            if lo - 1.0 <= st <= hi + 1.0:
+                times[a + k] = (st, en)
     # Eşleşmeyenler: sahne sınırları içinde komşu bilinen zamanlar arasında doğrusal dağıt
     out: list[tuple[float, float]] = []
     i = 0
@@ -77,10 +82,10 @@ def word_times(scene_texts: list[str], words: list[tuple[str, float, float]], bo
             out.append(times[i])  # type: ignore[arg-type]
             i += 1
             continue
-        j = i
-        while j < len(script) and times[j] is None:
-            j += 1
         si = script[i][1]
+        j = i
+        while j < len(script) and times[j] is None and script[j][1] == si:   # sahne sınırında dur
+            j += 1
         left = out[-1][1] if out and script[i - 1][1] == si else bounds[si][0]
         right = times[j][0] if j < len(script) and script[j][1] == si else bounds[si][1]  # type: ignore[index]
         step = max(0.05, (right - left) / (j - i))

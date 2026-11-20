@@ -257,3 +257,14 @@ def test_download_tries_thumb_host_when_upload_host_limited(conn, s3, monkeypatc
     monkeypatch.setattr(http, "request", req)
     res = VZ.match(conn, steps(conn, job)["asset_match"]).output
     assert res["downloaded"] >= 1
+
+
+def test_set_image_after_approval_needs_force(conn, monkeypatch):
+    from fds_worker import set_image
+    pid, job = _setup(conn)
+    slug = conn.execute("select slug from projects where id=%s", (pid,)).fetchone()["slug"]
+    conn.execute("update job_steps set status='done' where job_id=%s and step_key='visual_review'", (job,))
+    monkeypatch.setattr(images, "commons_file", lambda t: cand("Roman Forum", "commons", "by", 3000, 2000))
+    with pytest.raises(SystemExit):
+        set_image.assign(conn, slug, "doc", 1, "File:Roman Forum.jpg")
+    assert "doc#1" in set_image.assign(conn, slug, "doc", 1, "File:Roman Forum.jpg", force=True)

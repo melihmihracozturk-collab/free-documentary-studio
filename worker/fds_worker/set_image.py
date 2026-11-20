@@ -14,14 +14,14 @@ from .licenses import allowed
 from .main import connect
 
 
-def assign(conn, slug: str, kind: str, idx: int, file_title: str) -> str:
+def assign(conn, slug: str, kind: str, idx: int, file_title: str, force: bool = False) -> str:
     p = conn.execute("select id from projects where slug=%s", (slug,)).fetchone()
     if not p:
         raise SystemExit(f"Proje yok: {slug}")
     st = conn.execute("select s.status from job_steps s join jobs j on j.id=s.job_id where s.project_id=%s "
                       "and s.step_key='visual_review' order by j.created_at desc limit 1", (p["id"],)).fetchone()
-    if st and st["status"] == "done":
-        raise SystemExit("Görseller onaylanmış; önce panelden onayı geri alın.")
+    if st and st["status"] == "done" and not force:
+        raise SystemExit("Görseller onaylanmış; önce panelden onayı geri alın (veya force ile değiştirip yeniden render edin).")
     sc = conn.execute("select id from scenes where project_id=%s and kind=%s and idx=%s", (p["id"], kind, idx)).fetchone()
     if not sc:
         raise SystemExit(f"Sahne yok: {kind}#{idx}")
@@ -53,7 +53,7 @@ def main() -> None:
     e = lambda k: os.environ.get(k, "").strip()  # noqa: E731
     with connect(e("DATABASE_URL")) as conn:
         for i, f in zip(e("IDX").split(","), e("FILE").split("|")):
-            print(assign(conn, e("SLUG"), e("KIND") or "doc", int(i), f.strip()), flush=True)
+            print(assign(conn, e("SLUG"), e("KIND") or "doc", int(i), f.strip(), force=e("FORCE") == "true"), flush=True)
 
 
 if __name__ == "__main__":

@@ -235,3 +235,14 @@ def test_real_1453_subtitle_cases():
             lines = c[2].split("\n")
             assert len(lines) <= 3 and all(len(x) <= R.SHORTS.max_line for x in lines), c
             assert len(c[2].split()) >= 2, c
+
+
+def test_word_times_ignores_matches_outside_scene_bounds():
+    from fds_worker.render import word_times
+    scenes = ["Roma'dayız", "Floransa'dayız kubbesi için"]
+    bounds = [(0.0, 5.0), (5.0, 10.0)]
+    # Ses metinden farklı: "Floransa'dayız kubbesi için" kelimeleri sesin BAŞINDA da geçiyor (eşleşme hatası kaynağı)
+    words = [("Floransa'dayız", 0.2, 0.8), ("kubbesi", 0.9, 1.4), ("için", 1.5, 1.8), ("Roma'dayız", 2.0, 2.6),
+             ("bambaşka", 6.0, 6.5)]
+    _, t = word_times(scenes, words, bounds)
+    assert all(5.0 - 1.0 <= s <= 10.0 + 1.0 for s, _ in t[1:])           # 2. sahnenin kelimeleri kendi aralığında
