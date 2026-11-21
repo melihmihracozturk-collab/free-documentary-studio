@@ -41,6 +41,8 @@ def classify(*texts: str | None) -> str:
 
 def allowed(cls: str, allow_nc: bool = False, allow_sa: bool = True) -> tuple[bool, str]:
     """(kullanılabilir mi, gerekçe)"""
+    if cls == "own":
+        return True, "kullanıcının kendi yüklemesi (kullanım hakkı beyanı)"
     if cls in ("pd", "cc0", "by"):
         return True, "serbest kullanım" if cls in ("pd", "cc0") else "atıf zorunlu"
     if cls == "by-sa":

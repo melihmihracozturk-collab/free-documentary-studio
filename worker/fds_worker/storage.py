@@ -57,6 +57,14 @@ def download(key: str, dest: str | Path) -> Path:
     return dest
 
 
+def get_bytes(key: str) -> bytes:
+    return client().get_object(Bucket=bucket(), Key=key)["Body"].read()
+
+
+def delete_key(key: str) -> None:
+    client().delete_object(Bucket=bucket(), Key=key)
+
+
 def upload_bytes(key: str, data: bytes, content_type: str = "application/octet-stream") -> str:
     client().put_object(Bucket=bucket(), Key=key, Body=data, ContentType=content_type)
     return hashlib.sha256(data).hexdigest()

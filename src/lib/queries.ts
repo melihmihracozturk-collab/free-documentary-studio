@@ -252,13 +252,13 @@ export type VisualAsset = {
 };
 export type VisualScene = {
   id: string; kind: "doc" | "shorts"; idx: number; act: string | null; voiceover_text: string; visual_description: string | null;
-  asset_id: string | null; start_sec: string | null; end_sec: string | null;
+  asset_id: string | null; start_sec: string | null; end_sec: string | null; search_keywords: string[];
 };
 
 export async function getVisuals(projectId: string) {
   const sql = db();
   const scenes = await sql<VisualScene[]>`
-    select id, kind, idx, act, voiceover_text, visual_description, asset_id, start_sec, end_sec
+    select id, kind, idx, act, voiceover_text, visual_description, asset_id, start_sec, end_sec, search_keywords
       from scenes where project_id = ${projectId} order by kind, idx`;
   const assets = await sql<VisualAsset[]>`
     select id, scene_id, source, title, source_url, thumb_url, author, license, license_class, license_url, width, height,

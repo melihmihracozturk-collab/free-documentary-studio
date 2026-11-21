@@ -268,3 +268,25 @@ def test_set_image_after_approval_needs_force(conn, monkeypatch):
     with pytest.raises(SystemExit):
         set_image.assign(conn, slug, "doc", 1, "File:Roman Forum.jpg")
     assert "doc#1" in set_image.assign(conn, slug, "doc", 1, "File:Roman Forum.jpg", force=True)
+
+
+def test_user_upload_is_normalized_and_raw_deleted(conn, s3):  # noqa: F811
+    from PIL import Image
+    pid, job = _setup(conn)
+    sc = conn.execute("select id from scenes where project_id=%s and kind='doc' and idx=1", (pid,)).fetchone()
+    raw = io.BytesIO()
+    Image.new("RGB", (6000, 4000), (10, 120, 200)).save(raw, "PNG")
+    raw_key = "projects/pompei-son-gunu/uploads/abc.png"
+    storage.upload_bytes(raw_key, raw.getvalue(), "image/png")
+    aid = conn.execute("insert into assets (project_id, scene_id, kind, source, title, file_url, license, license_class, status) "
+                       "values (%s,%s,'image','upload','Benim fotoğrafım',%s,'Kullanıcı yüklemesi','own','approved') returning id",
+                       (pid, sc["id"], "r2:" + raw_key)).fetchone()["id"]
+    conn.execute("update scenes set asset_id=%s where id=%s", (aid, sc["id"]))
+    assert VZ.download_selected(conn, pid, "pompei-son-gunu") == 1
+    a = conn.execute("select * from assets where id=%s", (aid,)).fetchone()
+    assert a["storage_key"].endswith(f"{aid}.jpg") and (a["width"], a["height"]) == (2560, 1707)
+    keys = [o["Key"] for o in storage.client().list_objects_v2(Bucket="fds-test").get("Contents", [])]
+    assert raw_key not in keys                                                 # ham yükleme silindi
+    assert "kullanıcı yüklemesi" in VZ.credits_text([{**a, "scene_kind": "doc", "scene_idx": 1}])
+    from fds_worker.licenses import allowed, needs_attribution
+    assert allowed("own")[0] and not needs_attribution("own")

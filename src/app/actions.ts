@@ -8,6 +8,8 @@ import { db } from "@/lib/db";
 import { SESSION_COOKIE, checkPassword, createSessionToken } from "@/lib/auth";
 import { dispatchWorker } from "@/lib/github";
 import { slugify } from "@/lib/slug";
+import { Candidate } from "@/lib/imageSearch";
+import { allowed, classify } from "@/lib/licenses";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -218,6 +220,37 @@ export async function selectAsset(slug: string, sceneId: string, assetId: string
   });
   revalidatePath("/gorseller");
   return { ok: "Görsel değiştirildi" };
+}
+
+/** Panelden aranan bir görseli sahneye koyar. Lisans sunucuda yeniden sınıflandırılır (istemciye güvenilmez). */
+export async function addSceneImage(slug: string, sceneId: string, input: unknown): Promise<FormState> {
+  const parsed = Candidate.safeParse(input);
+  if (!parsed.success) return { error: "Geçersiz görsel bilgisi" };
+  const c = parsed.data;
+  const p = await projectBySlug(slug);
+  const sql = db();
+  const [sc] = await sql<{ id: string }[]>`select id from scenes where id = ${sceneId} and project_id = ${p.id}`;
+  if (!sc) return { error: "Sahne bulunamadı" };
+  const [st] = await sql<{ status: string }[]>`
+    select s.status from job_steps s join jobs j on j.id = s.job_id
+     where s.project_id = ${p.id} and s.step_key = 'visual_review' order by j.created_at desc limit 1`;
+  if (st && st.status === "done") return { error: "Görseller onaylandı; değiştirmek için onayı geri alın" };
+  const rows = await sql<{ key: string; value: unknown }[]>`select key, value from settings where key in ('license_allow_nc','license_allow_sa')`;
+  const s = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  const cls = classify(c.license_raw, c.license_url);
+  if (!allowed(cls, s.license_allow_nc === true, s.license_allow_sa !== false)) return { error: `Lisans uygun değil (${cls})` };
+  await sql.begin(async (tx) => {
+    const [a] = await tx<{ id: string }[]>`
+      insert into assets (project_id, scene_id, kind, source, title, source_url, file_url, thumb_url, author, license, license_url,
+                          license_class, attribution, width, height, score, query, status, is_ai)
+      values (${p.id}, ${sceneId}, 'image', ${c.source}, ${c.title}, ${c.page_url}, ${c.file_url}, ${c.thumb_url}, ${c.author},
+              ${c.license_raw}, ${c.license_url}, ${cls}, ${c.attribution}, ${c.width}, ${c.height}, 99, 'panel', 'approved', false)
+      returning id`;
+    await tx`update assets set status = 'candidate' where scene_id = ${sceneId} and status = 'approved' and id <> ${a.id}`;
+    await tx`update scenes set asset_id = ${a.id} where id = ${sceneId}`;
+  });
+  revalidatePath("/gorseller");
+  return { ok: "Görsel sahneye eklendi" };
 }
 
 export async function approveVisuals(slug: string): Promise<FormState> {

@@ -192,12 +192,17 @@ def match(conn, step) -> StepResult:
 # ----------------------------------------------------------------- indirme ve atıf
 def fetch_image(url: str) -> tuple[bytes, int, int]:
     """Görseli indirir, en fazla LONG_SIDE piksele küçültür, JPEG'e çevirir → (bayt, genişlik, yükseklik)."""
-    from PIL import Image
-
     r = http.request("GET", url, timeout=120)
-    if len(r.content) > MAX_DOWNLOAD_BYTES:
+    return normalize_image(r.content)
+
+
+def normalize_image(raw: bytes) -> tuple[bytes, int, int]:
+    """Herhangi bir görsel (JPG/PNG/WEBP) → en fazla LONG_SIDE px, EXIF yönü uygulanmış JPEG."""
+    from PIL import Image, ImageOps
+
+    if len(raw) > MAX_DOWNLOAD_BYTES:
         raise RuntimeError("görsel çok büyük")
-    img = Image.open(io.BytesIO(r.content))
+    img = ImageOps.exif_transpose(Image.open(io.BytesIO(raw)))
     img = img.convert("RGB")
     img.thumbnail((LONG_SIDE, LONG_SIDE))
     buf = io.BytesIO()
@@ -218,6 +223,25 @@ def download_selected(conn, pid, slug) -> int:
             conn.execute("update assets set storage_key=%s, sha256=%s, bytes=%s, width=%s, height=%s, reject_reason=null "
                          "where id=%s", (twin["storage_key"], twin["sha256"], twin["bytes"], twin["width"], twin["height"],
                                          a["id"]))
+            n += 1
+            continue
+        if a["source"] == "upload" and (a["file_url"] or "").startswith("r2:"):
+            # Kullanıcının panelden yüklediği görsel: R2'den okunur, normalleştirilir, ham dosya silinir
+            raw_key = a["file_url"][3:]
+            try:
+                data, w, h = normalize_image(storage.get_bytes(raw_key))
+            except Exception as e:  # noqa: BLE001
+                conn.execute("update assets set reject_reason=%s where id=%s",
+                             (f"yükleme okunamadı: {type(e).__name__}: {str(e)[:100]}", a["id"]))
+                continue
+            key = storage.project_key(slug, "assets", f"{a['id']}.jpg")
+            sha = storage.upload_bytes(key, data, "image/jpeg")
+            conn.execute("update assets set storage_key=%s, sha256=%s, bytes=%s, width=%s, height=%s, reject_reason=null, "
+                         "file_url=%s where id=%s", (key, sha, len(data), w, h, f"r2:{key}", a["id"]))
+            try:
+                storage.delete_key(raw_key)
+            except Exception:  # noqa: BLE001 — silinemezse yalnızca yer kaplar
+                pass
             n += 1
             continue
         urls = [a["file_url"]]
@@ -253,7 +277,7 @@ def credits_text(rows) -> str:
         lines.append(f"  Yapan: {r['author'] or 'bilinmiyor'} · Lisans: {lic}"
                      + (f" ({r['license_url']})" if r["license_url"] else "")
                      + (" · ATIF ZORUNLU" if needs_attribution(r["license_class"]) else ""))
-        lines.append(f"  Kaynak: {r['source_url']}")
+        lines.append(f"  Kaynak: {r['source_url'] or 'kullanıcı yüklemesi (kullanım hakkı kullanıcı beyanıyla)'}")
     return "\n".join(lines) + "\n"
 
 

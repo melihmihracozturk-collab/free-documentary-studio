@@ -6,6 +6,7 @@ import { Check, ExternalLink, ImageOff } from "lucide-react";
 import { approveVisuals, selectAsset, unapproveVisuals } from "@/app/actions";
 import type { VisualAsset, VisualScene } from "@/lib/queries";
 import { btnGhost, btnPrimary } from "./ui";
+import { SceneImageTools } from "./SceneImageTools";
 
 const LIC: Record<string, { label: string; cls: string }> = {
   pd: { label: "Kamu malı", cls: "bg-emerald-500/15 text-emerald-300" },
@@ -13,8 +14,9 @@ const LIC: Record<string, { label: string; cls: string }> = {
   by: { label: "CC BY · atıf", cls: "bg-sky-500/15 text-sky-300" },
   "by-sa": { label: "CC BY-SA · atıf", cls: "bg-amber-500/15 text-amber-300" },
   nc: { label: "NC · ticari değil", cls: "bg-rose-500/15 text-rose-300" },
+  own: { label: "Sizin yüklemeniz", cls: "bg-violet-500/15 text-violet-300" },
 };
-const SRC: Record<string, string> = { met: "Met Museum", commons: "Wikimedia Commons", openverse: "Openverse", smithsonian: "Smithsonian" };
+const SRC: Record<string, string> = { met: "Met Museum", commons: "Wikimedia Commons", openverse: "Openverse", smithsonian: "Smithsonian", upload: "Kullanıcı yüklemesi" };
 
 /** Önizleme: Commons yalnızca standart genişlikleri verir (500, 960, 1280, 1920, 3840…) ve orijinal dosyaya doğrudan
  *  erişimi kota sınırına takar; her iki adres biçiminden de 500px küçük resim üretilir. */
@@ -129,6 +131,11 @@ export function VisualPicker({ slug, scenes, assets, approved, canApprove }: {
                     </div>
                   </div>
                 )}
+                {!approved && (
+                  <SceneImageTools slug={slug} sceneId={s.id} vertical={kind === "shorts"}
+                                   suggestion={s.search_keywords?.[0] ?? s.visual_description?.slice(0, 60) ?? ""} />
+                )}
+                {approved && <p className="mt-2 text-xs text-zinc-500">Görsel aramak veya yüklemek için önce onayı geri alın.</p>}
               </div>
             </li>
           );
