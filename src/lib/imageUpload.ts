@@ -21,11 +21,11 @@ export async function checkImageUpload(slug: string, m: z.infer<typeof ImageUplo
   const ext = IMAGE_TYPES[m.type as keyof typeof IMAGE_TYPES];
   if (!ext) return { error: "Yalnızca JPG, PNG veya WEBP yüklenebilir", status: 400 } as const;
   if (m.size > MAX_IMAGE_MB * 1024 * 1024) return { error: `Görsel en fazla ${MAX_IMAGE_MB} MB olabilir`, status: 413 } as const;
-  const [st] = await sql<{ locked: boolean; over: boolean }[]>`
+  const [st] = await sql<{ locked: boolean; over_limit: boolean }[]>`
     select exists (select 1 from job_steps s join jobs j on j.id = s.job_id where s.project_id = ${sc.project_id}
                     and s.step_key = 'visual_review' and s.status = 'done' and j.status <> 'cancelled') locked,
-           (select used_bytes + ${m.size} > guard_bytes from storage_usage) over`;
+           (select used_bytes + ${m.size}::bigint > guard_bytes from storage_usage) as over_limit`;   // "over" PostgreSQL'de ayrılmış kelime
   if (st.locked) return { error: "Görseller onaylanmış; değiştirmek için önce onayı geri alın", status: 409 } as const;
-  if (st.over) return { error: "Depolama koruma eşiği aşılır; eski dosyaları silin", status: 507 } as const;
+  if (st.over_limit) return { error: "Depolama koruma eşiği aşılır; eski dosyaları silin", status: 507 } as const;
   return { projectId: sc.project_id, ext } as const;
 }

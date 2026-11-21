@@ -11,6 +11,16 @@ const LIC: Record<string, string> = {
   pd: "Kamu malı", cc0: "CC0", by: "CC BY · atıf", "by-sa": "CC BY-SA · atıf", nc: "NC · ticari değil",
 };
 
+/** Yanıtı güvenle okur: boş/HTML gövde (ör. sunucu hatası) "Unexpected end of JSON" yerine anlaşılır hata verir. */
+async function readJson(r: Response): Promise<Record<string, unknown>> {
+  const t = await r.text();
+  try {
+    return t ? JSON.parse(t) : {};
+  } catch {
+    return { error: `Sunucu beklenmeyen yanıt verdi (HTTP ${r.status})` };
+  }
+}
+
 /** Bir sahne için: arşivlerde (Commons + Openverse) arama ve kullanıcının kendi görselini yükleme. */
 export function SceneImageTools({ slug, sceneId, suggestion, vertical }: {
   slug: string; sceneId: string; suggestion: string; vertical: boolean;
@@ -31,8 +41,8 @@ export function SceneImageTools({ slug, sceneId, suggestion, vertical }: {
     setBusy(true); setMsg(null); setResults(null);
     try {
       const r = await fetch(`/api/projects/${slug}/images/search?q=${encodeURIComponent(q)}`);
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? "Arama başarısız");
+      const j = (await readJson(r)) as { error?: string; results: Candidate[]; rejected: number; errors?: string[] };
+      if (!r.ok) throw new Error(j.error ?? `Arama başarısız (HTTP ${r.status})`);
       setResults(j.results);
       setNote(`${j.results.length} uygun görsel${j.rejected ? ` · ${j.rejected} lisansı uygun olmadığı için gizlendi` : ""}` +
               (j.errors?.length ? ` · ulaşılamayan arşiv: ${j.errors.join(", ")} (yoğunluk olabilir, biraz sonra tekrar deneyin)` : ""));
@@ -57,13 +67,13 @@ export function SceneImageTools({ slug, sceneId, suggestion, vertical }: {
     try {
       const meta = { sceneId, filename: f.name, size: f.size, type: f.type };
       const pr = await fetch(`/api/projects/${slug}/images/presign`, { method: "POST", body: JSON.stringify(meta) });
-      const p = await pr.json();
-      if (!pr.ok) throw new Error(p.error ?? "Yükleme başlatılamadı");
+      const p = (await readJson(pr)) as { error?: string; url: string; key: string; contentType: string };
+      if (!pr.ok) throw new Error(p.error ?? `Yükleme başlatılamadı (HTTP ${pr.status})`);
       const put = await fetch(p.url, { method: "PUT", body: f, headers: { "Content-Type": p.contentType } });
-      if (!put.ok) throw new Error(`Depoya yüklenemedi (${put.status})`);
+      if (!put.ok) throw new Error(`Depoya yüklenemedi (HTTP ${put.status}); R2 CORS ayarı görsel türlerine izin vermiyor olabilir`);
       const cr = await fetch(`/api/projects/${slug}/images/complete`, { method: "POST", body: JSON.stringify({ ...meta, key: p.key, rights: true }) });
-      const c = await cr.json();
-      if (!cr.ok) throw new Error(c.error ?? "Yükleme tamamlanamadı");
+      const c = (await readJson(cr)) as { error?: string };
+      if (!cr.ok) throw new Error(c.error ?? `Yükleme tamamlanamadı (HTTP ${cr.status})`);
       setMsg({ ok: "Görsel yüklendi ve sahneye eklendi" });
       setOpen(null);
       router.refresh();
