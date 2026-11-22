@@ -33,8 +33,9 @@ try {
   let slug = base;
   for (let i = 2; (await sql`select 1 from projects where slug = ${slug}`).length; i++) slug = `${base}-${i}`;
   await sql.begin(async (tx) => {
-    const [p] = await tx`insert into projects (slug, title, topic, language, target_minutes, style, format)
-                         values (${slug}, ${TOPIC}, ${TOPIC}, ${LANGUAGE}, ${minutes}, ${STYLE}, ${FORMAT}) returning id`;
+    const [p] = await tx`insert into projects (slug, title, topic, language, target_minutes, style, format, shorts_seconds)
+                         values (${slug}, ${TOPIC}, ${TOPIC}, ${LANGUAGE}, ${minutes}, ${STYLE}, ${FORMAT},
+                                 ${FORMAT === "review" ? 58 : 55}) returning id`;
     await tx`select create_pipeline_job(${p.id})`;
   });
   console.log(`Proje oluşturuldu: ${slug}`);

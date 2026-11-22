@@ -140,7 +140,7 @@ class FakeReview:
             return {"insert_after": []}
         if "YouTube Shorts" in prompt:
             self.calls.append("shorts")
-            assert "quick-fire picks" in prompt
+            assert "quick-fire picks" in prompt and "STANDALONE" in prompt and "full recommendation" not in prompt
             sizes = [int(x) for x in re.search(r"narration lengths in words: \[([^\]]*)\]", prompt).group(1).split(",")]
             return {"title": "Kış", "scenes": [scene(round(w / script.LENGTH_BOOST) if i else w, ["C1"])
                                                for i, w in enumerate(sizes)]}
@@ -156,7 +156,10 @@ def test_review_script_layouts_saved(conn, monkeypatch):
     monkeypatch.setenv("FDS_FAKE_LLM", "1")
     fake = FakeReview()
     monkeypatch.setattr(llm, "fake_responder", fake)
-    out = script.script_doc(conn, steps(conn, job)["script_doc"]).output
+    # Öneri biçimi yalnızca Shorts üretir: uzun senaryo adımı atlanır
+    assert script.script_doc(conn, steps(conn, job)["script_doc"]).output == {"skipped": "Öneri biçimi yalnızca Shorts üretir"}
+    p = conn.execute("select * from projects where id=%s", (pid,)).fetchone()
+    out = review.script_review(conn, steps(conn, job)["script_doc"], p).output        # uzun yazım kodu yine çalışır
     assert out["format"] == "review" and out["chapters"] == ["Giriş", "Frieren", "Dark", "Kapanış"]
     rows = conn.execute("select act, layout, title_ref from scenes where project_id=%s and kind='doc' order by idx",
                         (pid,)).fetchall()
@@ -171,6 +174,25 @@ def test_review_script_layouts_saved(conn, monkeypatch):
     lay = [r["layout"] for r in conn.execute("select layout from scenes where project_id=%s and kind='shorts' order by idx",
                                              (pid,)).fetchall()]
     assert lay[0] == "host" and lay[-1] == "host" and "title" in lay
+
+
+def test_review_job_skips_long_video_steps(conn):
+    pid, job = _review_project(conn)
+    conn.execute("delete from jobs where project_id=%s", (pid,))
+    job = conn.execute("select create_pipeline_job(%s) as id", (pid,)).fetchone()["id"]
+    st = steps(conn, job)
+    assert st["script_doc"]["status"] == "skipped" and st["render_doc"]["status"] == "skipped"
+    assert st["script_shorts"]["status"] == "pending" and st["render_shorts"]["status"] == "pending"
+    conn.execute("select reset_from_step(%s, 'research_collect')", (job,))             # yeniden başlatınca da atlanır
+    assert steps(conn, job)["render_doc"]["status"] == "skipped"
+    # Belgesel projeleri etkilenmez
+    did, djob = make_project(conn, "belgesel-etkilenmez")
+    assert steps(conn, djob)["render_doc"]["status"] == "pending"
+    # Seslendirme beklemesi: öneride yalnızca Shorts sesi yeterli
+    conn.execute("insert into voiceovers (project_id, kind, storage_key, filename) values (%s,'shorts','k','f')", (pid,))
+    assert conn.execute("select input_already_satisfied('voiceover_wait', %s) ok", (pid,)).fetchone()["ok"] is True
+    conn.execute("insert into voiceovers (project_id, kind, storage_key, filename) values (%s,'shorts','k','f')", (did,))
+    assert conn.execute("select input_already_satisfied('voiceover_wait', %s) ok", (did,)).fetchone()["ok"] is False
 
 
 # ----------------------------------------------------------------- sunucu
@@ -283,7 +305,8 @@ def test_review_descriptions_and_promo_license():
     from fds_worker.licenses import allowed, needs_attribution
     d = deliver.doc_description({"title": "Kış animeleri", "format": "review"}, None, None, [], [], [])
     assert "TMDB" in d and "telif" in d and "spoiler" in d
-    assert "#anime" in deliver.shorts_description({"title": "x", "format": "review"}, None)
+    sd = deliver.shorts_description({"title": "x", "format": "review"}, None)
+    assert "#anime" in sd and "TMDB" in sd and "kanalımızdaki videoda" not in sd      # uzun video yok, açıklama kendi başına
     assert allowed("promo")[0] and needs_attribution("promo")
 
 
@@ -294,7 +317,7 @@ from .test_voiceover import s3  # noqa: F401,E402  (moto S3 fikstürü)
 def test_tts_texts_step_creates_voiceovers_and_releases_wait(conn, s3, monkeypatch):  # noqa: F811
     from fds_worker import storage, voiceover
     pid, job = _review_project(conn)
-    for kind in ("doc", "shorts"):
+    for kind in ("shorts",):
         sid = conn.execute("insert into scripts (project_id, kind, version, content, approved_at) values (%s,%s,1,'{}',now()) "
                            "returning id", (pid, kind)).fetchone()["id"]
         for i, t in enumerate(["Merhaba, ben Ayla.", "Bugün iki öneri var."], 1):
@@ -302,9 +325,9 @@ def test_tts_texts_step_creates_voiceovers_and_releases_wait(conn, s3, monkeypat
                          (pid, sid, kind, i, t))
     monkeypatch.setattr(tts, "synth_for", lambda conn: ([("fake", _tone)], {"voice": "fake"}))
     out = voiceover.texts(conn, steps(conn, job)["voiceover_texts"]).output
-    assert out["tts"]["doc"]["provider"] == "fake" and out["tts"]["shorts"]["paragraphs"] == 2
+    assert "doc" not in out["tts"] and out["tts"]["shorts"]["provider"] == "fake" and out["tts"]["shorts"]["paragraphs"] == 2
     vos = conn.execute("select kind, status, storage_key from voiceovers where project_id=%s order by kind", (pid,)).fetchall()
-    assert [(v["kind"], v["status"]) for v in vos] == [("doc", "uploaded"), ("shorts", "uploaded")]
+    assert [(v["kind"], v["status"]) for v in vos] == [("shorts", "uploaded")]
     storage.client().head_object(Bucket="fds-test", Key=vos[0]["storage_key"])
     # Bekleme adımı açıldığında sesler hazır olduğu için kendiliğinden geçer
     conn.execute("update job_steps set status='done' where job_id=%s and seq < 80", (job,))
@@ -323,15 +346,15 @@ def test_review_render_end_to_end(conn, s3, tmp_path):  # noqa: F811
                  (Jsonb({"plan": {"titles": TITLES}}), job))
     texts = ["Merhaba, ben Ayla.", "İlk önerim Frieren.", "Hüzünlü ama sıcak."]
     bounds = [(0.0, 1.5), (1.5, 3.0), (3.0, 4.0)]
-    wav = tmp_path / "doc.wav"
+    wav = tmp_path / "shorts.wav"
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=220:d=4", str(wav)], check=True)
-    storage.upload_file(f"projects/{slug}/voiceover/doc.wav", wav, "audio/wav")
+    storage.upload_file(f"projects/{slug}/voiceover/shorts.wav", wav, "audio/wav")
     words = [{"w": w, "s": round(b[0] + 0.1 + k * 0.3, 2), "e": round(b[0] + 0.35 + k * 0.3, 2)}
              for t, b in zip(texts, bounds) for k, w in enumerate(t.split())]
-    storage.upload_bytes(f"projects/{slug}/voiceover/doc_words.json", json.dumps(words).encode())
+    storage.upload_bytes(f"projects/{slug}/voiceover/shorts_words.json", json.dumps(words).encode())
     conn.execute("insert into voiceovers (project_id, kind, storage_key, filename, bytes, sha256, status, duration_sec, words_key) "
-                 "values (%s,'doc',%s,'doc.wav',1,'abc','analyzed',4.0,%s)",
-                 (pid, f"projects/{slug}/voiceover/doc.wav", f"projects/{slug}/voiceover/doc_words.json"))
+                 "values (%s,'shorts',%s,'shorts.wav',1,'abc','analyzed',4.0,%s)",
+                 (pid, f"projects/{slug}/voiceover/shorts.wav", f"projects/{slug}/voiceover/shorts_words.json"))
     img = tmp_path / "poster.jpg"
     Image.new("RGB", (460, 650), (200, 120, 60)).save(img)
     sha = storage.upload_file(f"projects/{slug}/assets/poster.jpg", img, "image/jpeg")
@@ -340,17 +363,21 @@ def test_review_render_end_to_end(conn, s3, tmp_path):  # noqa: F811
                        (pid, f"projects/{slug}/assets/poster.jpg", sha)).fetchone()["id"]
     for i, (t, (a, b), lay, ref) in enumerate(zip(texts, bounds, ["host", "title", "full"], [None, "oneri_1", "oneri_1"]), 1):
         conn.execute("insert into scenes (project_id, kind, idx, act, voiceover_text, start_sec, end_sec, transition, asset_id, "
-                     "layout, title_ref, on_screen_text) values (%s,'doc',%s,%s,%s,%s,%s,'crossfade',%s,%s,%s,%s)",
-                     (pid, i, ref or "giris", t, a, b, aid if ref else None, lay, ref, "5 kış animesi" if i == 1 else None))
-    p = conn.execute("select * from projects where id=%s", (pid,)).fetchone()
-    render.build_subtitles(conn, p, render.fmt_for(p, render.DOC))
-    ass = storage.get_bytes(f"projects/{slug}/subtitles/doc.ass").decode()
-    assert ",80,860,60,1" in ass and "5 kış animesi" not in ass          # ekran yazısı grafikte, altyazıda değil
-    out = render.render_doc(conn, steps(conn, job)["render_doc"])
+                     "layout, title_ref, on_screen_text) values (%s,'shorts',%s,'shorts',%s,%s,%s,'crossfade',%s,%s,%s,%s)",
+                     (pid, i, t, a, b, aid if ref else None, lay, ref, "Bleach izlediniz mi?" if i == 1 else None))
+    sub = render.subtitles(conn, steps(conn, job)["subtitles"]).output
+    assert list(sub) == ["shorts"]                                       # öneride yalnızca Shorts altyazısı
+    ass = storage.get_bytes(f"projects/{slug}/subtitles/shorts.ass").decode()
+    assert ",80,80,800,1" in ass and "Bleach izlediniz mi?" not in ass    # ekran yazısı grafikte, altyazıda değil
+    assert render.render_doc(conn, steps(conn, job)["render_doc"]).output == {"skipped": "Öneri biçimi yalnızca Shorts üretir"}
+    out = render.render_shorts(conn, steps(conn, job)["render_shorts"])
     assert out.output["presenter"] is True and out.output["clips_rendered"] == 3
     assert abs(out.output["duration_sec"] - 4.0) < 0.3
-    r = conn.execute("select width, height, status from renders where project_id=%s", (pid,)).fetchone()
-    assert (r["width"], r["height"], r["status"]) == (1920, 1080, "done")
+    r = conn.execute("select kind, width, height, status from renders where project_id=%s", (pid,)).fetchall()
+    assert [(x["kind"], x["width"], x["height"], x["status"]) for x in r] == [("shorts", 1080, 1920, "done")]
+    done = deliver.ready(conn, steps(conn, job)["preview_ready"]).output   # teslim: uzun video beklenmez
+    assert "shorts_description.txt" in done["files"] and "youtube_description.txt" not in done["files"]
+    assert done["doc_seconds"] is None and done["shorts_seconds"] > 3
 
 
 def test_long_title_words_shrink_to_fit():

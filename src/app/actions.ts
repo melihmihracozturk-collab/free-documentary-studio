@@ -38,8 +38,9 @@ export async function createProject(_prev: FormState, form: FormData): Promise<F
 
   await sql.begin(async (tx) => {
     const [p] = await tx<{ id: string }[]>`
-      insert into projects (slug, title, topic, language, target_minutes, style, format)
-      values (${slug}, ${topic}, ${topic}, ${language}, ${target_minutes}, ${style}, ${format}) returning id`;
+      insert into projects (slug, title, topic, language, target_minutes, style, format, shorts_seconds)
+      values (${slug}, ${topic}, ${topic}, ${language}, ${target_minutes}, ${style}, ${format},
+              ${format === "review" ? 58 : 55}) returning id`;
     await tx`select create_pipeline_job(${p.id})`;
   });
 

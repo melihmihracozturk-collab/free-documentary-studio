@@ -16,7 +16,7 @@ export default async function ProjectPage({ params }: PageProps<"/projeler/[slug
 
   return (
     <>
-      <PageHeader title={p.title} description={`${p.language.toUpperCase()} · ${Number(p.target_minutes)} dk ${p.format === "vlog" ? "gezi vlogu" : p.format === "review" ? "öneri videosu" : "belgesel"} + ${p.shorts_seconds} sn Shorts · ${p.style}`}>
+      <PageHeader title={p.title} description={`${p.language.toUpperCase()} · ${p.format === "review" ? `Ayla'nın öneri Shorts'u (≈${p.shorts_seconds} sn)` : `${Number(p.target_minutes)} dk ${p.format === "vlog" ? "gezi vlogu" : "belgesel"} + ${p.shorts_seconds} sn Shorts`} · ${p.style}`}>
         <div className="flex items-center gap-2">
           {job && <StatusBadge status={job.status} />}
           {job && !finished && (

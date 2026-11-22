@@ -26,6 +26,11 @@ from .handlers import StepResult
 
 LIMITS = {"doc": (8 * 60, 15 * 60), "shorts": (45, 60)}
 FILES = {"doc": "documentary_voiceover.txt", "shorts": "shorts_voiceover.txt"}
+
+
+def kinds_for(p) -> tuple[str, ...]:
+    """Öneri biçimi (Ayla) yalnızca Shorts üretir; diğer biçimler belgesel + Shorts."""
+    return ("shorts",) if (p.get("format") or "documentary") == "review" else ("doc", "shorts")
 MIN_COVERAGE = 0.6
 
 
@@ -38,7 +43,7 @@ def build_text(scenes: list[dict]) -> str:
 def texts(conn, step) -> StepResult:
     p = conn.execute("select * from projects where id=%s", (step["project_id"],)).fetchone()
     out, spoken = {}, {}
-    for kind in ("doc", "shorts"):
+    for kind in kinds_for(p):
         sc = conn.execute("select id, approved_at from scripts where project_id=%s and kind=%s order by version desc limit 1",
                           (p["id"], kind)).fetchone()
         if not sc:
@@ -55,7 +60,7 @@ def texts(conn, step) -> StepResult:
             key = storage.project_key(p["slug"], "scripts", FILES[kind])
             storage.upload_bytes(key, text.encode(), "text/plain; charset=utf-8")
         out[kind] = {"chars": len(text), "words": len(text.split()), "file": FILES[kind], "r2_key": key}
-    out["elevenlabs_credits_estimate"] = out["doc"]["chars"] + out["shorts"]["chars"]
+    out["elevenlabs_credits_estimate"] = sum(out[k]["chars"] for k in kinds_for(p))
     if (p.get("format") or "documentary") == "review":
         # Öneri biçimi: sunucunun sesi ücretsiz otomatik seslendirmeyle üretilir (yükleme beklenmez)
         if not storage.configured():
@@ -169,8 +174,11 @@ def analyze(conn, step) -> StepResult:
     if not storage.configured():
         raise RuntimeError("R2 yapılandırılmamış (R2_* secret'ları); ses dosyaları indirilemiyor")
     vos = conn.execute("select * from voiceovers where project_id=%s order by kind", (p["id"],)).fetchall()
-    if {v["kind"] for v in vos} != {"doc", "shorts"}:
-        raise RuntimeError("İki seslendirme dosyası da yüklenmiş olmalı (belgesel + Shorts)")
+    need = set(kinds_for(p))
+    vos = [v for v in vos if v["kind"] in need]
+    if {v["kind"] for v in vos} != need:
+        raise RuntimeError("Shorts seslendirmesi hazır değil" if need == {"shorts"}
+                           else "İki seslendirme dosyası da yüklenmiş olmalı (belgesel + Shorts)")
     results = {}
     with tempfile.TemporaryDirectory() as tmp:
         for v in vos:

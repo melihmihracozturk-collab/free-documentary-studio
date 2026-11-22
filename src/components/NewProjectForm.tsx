@@ -40,7 +40,7 @@ export function NewProjectForm({ defaultMinutes }: { defaultMinutes: number }) {
       <div>
         <label htmlFor="topic" className="mb-1.5 block text-sm text-zinc-300">Konu</label>
         <input id="topic" name="topic" required minLength={3} maxLength={200} className={input}
-               placeholder={review ? "Bu kış izlenecek 5 fantastik anime (ya da: Frieren, Dark, Arcane)" : vlog ? "Roma Gezisi — Kolezyum'dan Vatikan'a" : "Pompei'nin Son Günü — Vezüv'ün Yok Ettiği Şehir"} />
+               placeholder={review ? "Bleach (ya da: Bu kış izlenecek 3 fantastik anime)" : vlog ? "Roma Gezisi — Kolezyum'dan Vatikan'a" : "Pompei'nin Son Günü — Vezüv'ün Yok Ettiği Şehir"} />
       </div>
       <div className="grid gap-5 sm:grid-cols-2">
         <div>
@@ -50,15 +50,23 @@ export function NewProjectForm({ defaultMinutes }: { defaultMinutes: number }) {
             <option value="en">English</option>
           </select>
         </div>
-        <div>
-          <label htmlFor="target_minutes" className="mb-1.5 block text-sm text-zinc-300">
-            Süre: <span className="tabular-nums text-amber-300">{minutes} dakika</span>
-          </label>
-          <input id="target_minutes" name="target_minutes" type="range" min={8} max={15} step={1}
-                 value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}
-                 className="w-full accent-amber-500" />
-          <div className="flex justify-between text-xs text-zinc-500"><span>8</span><span>15</span></div>
-        </div>
+        {review ? (
+          <div>
+            <span className="mb-1.5 block text-sm text-zinc-300">Süre</span>
+            <p className="text-sm text-violet-300">≈1 dakikalık Shorts (1080×1920)</p>
+            <input type="hidden" name="target_minutes" value={8} />
+          </div>
+        ) : (
+          <div>
+            <label htmlFor="target_minutes" className="mb-1.5 block text-sm text-zinc-300">
+              Süre: <span className="tabular-nums text-amber-300">{minutes} dakika</span>
+            </label>
+            <input id="target_minutes" name="target_minutes" type="range" min={8} max={15} step={1}
+                   value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}
+                   className="w-full accent-amber-500" />
+            <div className="flex justify-between text-xs text-zinc-500"><span>8</span><span>15</span></div>
+          </div>
+        )}
       </div>
       <div>
         <label htmlFor="style" className="mb-1.5 block text-sm text-zinc-300">Anlatım</label>
@@ -66,12 +74,12 @@ export function NewProjectForm({ defaultMinutes }: { defaultMinutes: number }) {
                defaultValue={review ? "Enerjik ve samimi öneri videosu" : vlog ? "Samimi gezi vlogu" : "Sinematik kısa belgesel"} />
       </div>
       <p className="text-xs text-zinc-500">
-        Aynı konudan 45–60 saniyelik bağımsız bir Shorts da üretilecek. Ana video 1920×1080 25 fps, Shorts 1080×1920 30 fps.
-        {review && " Öneri videosunu kodla çizilmiş kadın sunucu (Ayla) anlatır: sesi ücretsiz otomatik seslendirmeyle üretilir, ağzı sese göre hareket eder. Yapım bilgileri AniList/TMDB/Vikipedi'den, görseller resmî afişler ve hareketli grafiklerdir."}
+        {!review && "Aynı konudan 45–60 saniyelik bağımsız bir Shorts da üretilecek. Ana video 1920×1080 25 fps, Shorts 1080×1920 30 fps."}
+        {review && "Uzun video üretilmez; yalnızca ≈1 dakikalık dikey Shorts (en fazla 3 yapım). Shorts'u kodla çizilmiş kadın sunucu (Ayla) anlatır: sesi ücretsiz otomatik seslendirmeyle üretilir, ağzı sese göre hareket eder. Yapım bilgileri AniList/TMDB/Vikipedi'den, görseller resmî afişler ve hareketli grafiklerdir."}
         {vlog && " Vlogda görüntüler açık lisanslı arşiv fotoğraflarıdır; fiyat/saat gibi pratik bilgiler senaryoda “kontrol edilmeli” diye işaretlenir."}
       </p>
       {state?.error && <p role="alert" className="text-sm text-rose-300">{state.error}</p>}
-      <button className={btnPrimary} disabled={pending}>{pending ? "Oluşturuluyor…" : review ? "Öneri videosunu başlat" : vlog ? "Vlogu başlat" : "Belgeseli başlat"}</button>
+      <button className={btnPrimary} disabled={pending}>{pending ? "Oluşturuluyor…" : review ? "Öneri Shorts'unu başlat" : vlog ? "Vlogu başlat" : "Belgeseli başlat"}</button>
     </form>
   );
 }
