@@ -1,5 +1,5 @@
 import { Card, Empty, Stat } from "./ui";
-import { getClaimsText, getScripts, getStepState, type Scene, type Script } from "@/lib/queries";
+import { getProjectFormat, getClaimsText, getScripts, getStepState, type Scene, type Script } from "@/lib/queries";
 import { SceneEditor } from "./SceneEditor";
 import { needsCheck, practicalRefs } from "@/lib/practical";
 
@@ -87,14 +87,31 @@ function ScriptCard({ title, script, scenes, slug, claims, canApprove, showAppro
 }
 
 export async function ScriptView({ projectId, slug }: { projectId: string; slug: string }) {
-  const [{ doc, shorts, docScenes, shortsScenes }, claims, review] = await Promise.all([
-    getScripts(projectId), getClaimsText(projectId), getStepState(projectId, "script_review")]);
+  const [{ doc, shorts, docScenes, shortsScenes }, claims, review, format] = await Promise.all([
+    getScripts(projectId), getClaimsText(projectId), getStepState(projectId, "script_review"), getProjectFormat(projectId)]);
+  const shortsOnly = format === "review";            // Ayla'nın öneri biçimi yalnızca ~1 dakikalık Shorts üretir
   const canApprove = review?.status === "waiting_input";
-  const label = doc?.content.format === "vlog" ? "Vlog" : doc?.content.format === "review" ? "Öneri videosu" : "Belgesel";
+  const label = format === "vlog" ? "Vlog" : shortsOnly ? "Öneri Shorts'u" : "Belgesel";
   const refs = practicalRefs(claims);
   const checks = [...docScenes, ...shortsScenes].filter((s) => needsCheck(s, refs)).length;
   if (!doc && !shorts) {
     return <Card title="Senaryo"><Empty>Senaryo henüz yazılmadı. Araştırma onaylandıktan sonra bulut işçisi yazacak.</Empty></Card>;
+  }
+  if (shortsOnly) {
+    return (
+      <>
+        <div className="grid grid-cols-2 gap-3">
+          <Stat label="Shorts sahnesi" value={shortsScenes.length} />
+          <Stat label="Tahmini Shorts süresi" value={shorts?.est_seconds ? `${Math.round(Number(shorts.est_seconds))} sn` : "—"} hint={`${shorts?.word_count ?? 0} kelime · hedef ≈1 dakika`} />
+        </div>
+        {review?.status === "waiting_input" && (
+          <p className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-200">
+            Ayla&apos;nın Shorts metni onayınızı bekliyor. Sahneleri okuyun, gerekirse düzenleyin, sonra onaylayın. Ses onaylı metinden otomatik üretilir.
+          </p>
+        )}
+        <ScriptCard title="Shorts · Ayla" script={shorts} scenes={shortsScenes} slug={slug} claims={claims} canApprove={canApprove} showApprove label={label} />
+      </>
+    );
   }
   return (
     <>

@@ -267,8 +267,8 @@ def script_doc(conn, step) -> StepResult:
         from .vlog import script_vlog            # döngüsel içe aktarmayı önler
         return script_vlog(conn, step, p)
     if (p.get("format") or "documentary") == "review":
-        from .review import script_review
-        return script_review(conn, step, p)
+        # Öneri biçimi yalnızca ~1 dakikalık Shorts üretir (veritabanı bu adımı zaten atlar)
+        return StepResult(output={"skipped": "Öneri biçimi yalnızca Shorts üretir"})
     wpm = _setting(conn, "narration_wpm", 125)
     budget = int(float(p["target_minutes"]) * wpm)
     claims, status = _claims_block(conn, p["id"])
@@ -542,12 +542,12 @@ def script_shorts(conn, step) -> StepResult:
     film = film_word(p)
     prompt = f"""
 Write an independent YouTube Shorts script ({p['shorts_seconds']} seconds, vertical 9:16) in {lang}.
-Topic: {p['topic']}. The full {film} is titled: "{doc['t'] if doc else p['title']}".
+Topic: {p['topic']}. {"This Shorts is a STANDALONE recommendation video (there is no longer video)." if review else f'The full {film} is titled: "{doc["t"] if doc else p["title"]}".'}
 
 Write EXACTLY {len(per_scene)} scenes with these narration lengths in words: {[round(w * LENGTH_BOOST) if i else w for i, w in enumerate(per_scene)]}.
 - Scene 1 = HOOK (about 3 seconds): instant curiosity — a shocking fact, a question or tension. It must be TRUE to the claims.
 - {"The most striking places/facts of the route as a quick teaser" if vlog else "The host's quick-fire picks: one or two spoiler-free lines per title, name each title clearly" if review else "One focused story arc with escalating tension"}; it must make sense on its own.
-- Last scene: a natural line that makes viewers want the full {film} (no "like and subscribe").
+- Last scene: {"a short question to the viewer (e.g. which one they will start with / have they seen it) — no 'like and subscribe'" if review else f'a natural line that makes viewers want the full {film} (no "like and subscribe")'}.
 - Visuals must work in vertical framing (close-ups, details, single subjects).
 
 {style}
@@ -568,7 +568,9 @@ CLAIMS:
         raise RuntimeError("Shorts senaryosu üretilemedi: " + "; ".join(errs[:5]))
     scenes, edits = _edit(conn, p, "shorts", scenes, claims, status, budget,
                           "5. This is a 45-60 s Shorts: keep scene 1 as a hook of at most 8 words. Keep 6-10 scenes.\n"
-                          f"6. The last line invites to the full {film} naturally — no 'izleyin', 'hemen', 'abone ol', 'beğen'.",
+                          + ("6. The last line is a short question to the viewer — no 'abone ol', 'beğen', no mention of a longer video."
+                           if review else
+                           f"6. The last line invites to the full {film} naturally — no 'izleyin', 'hemen', 'abone ol', 'beğen'."),
                           style=style)
     scenes, dd_notes = dedupe_scenes(scenes, int(budget * (1 - TOLERANCE)) - 10)
     scenes, short_note = _shorten(conn, p, scenes, budget, claims, style)

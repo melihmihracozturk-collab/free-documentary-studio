@@ -75,7 +75,11 @@ def doc_description(p: dict, logline: str | None, summary: str | None, chaps, so
 
 def shorts_description(p: dict, title: str | None) -> str:
     if (p.get("format") or "documentary") == "review":
-        return f"{title or p['title']}\n\nTüm öneriler ve ayrıntılar kanalımızdaki videoda.\n\n#Shorts #anime #dizi #film #öneri\n"
+        return (f"{title or p['title']}\n\n"
+                "Sunucu karakter ve animasyonlar özgündür. Afişlerin telif hakları yapımcılarına aittir; inceleme amacıyla "
+                "kullanılmıştır. Bilgiler: AniList, TMDB, Vikipedi. This product uses the TMDB API but is not endorsed or "
+                "certified by TMDB. Seslendirme yapay zekâ ile üretilmiştir. Spoiler yoktur.\n\n"
+                "#Shorts #anime #dizi #film #öneri\n")
     if (p.get("format") or "documentary") == "vlog":
         return f"{title or p['title']}\n\nTam gezi videosu kanalımızda.\n\n#Shorts #gezi #seyahat\n"
     return f"{title or p['title']}\n\nTam belgesel kanalımızda.\n\n#Shorts #tarih #belgesel\n"
@@ -85,7 +89,8 @@ def ready(conn, step) -> StepResult:
     p = conn.execute("select * from projects where id=%s", (step["project_id"],)).fetchone()
     renders = {r["kind"]: r for r in conn.execute(
         "select * from renders where project_id=%s and status='done'", (p["id"],)).fetchall()}
-    missing = [k for k in ("doc", "shorts") if k not in renders]
+    review = (p.get("format") or "documentary") == "review"
+    missing = [k for k in (("shorts",) if review else ("doc", "shorts")) if k not in renders]
     if missing:
         raise RuntimeError(f"Render eksik: {missing}")
     scripts = {r["kind"]: r for r in conn.execute(
@@ -101,17 +106,19 @@ def ready(conn, step) -> StepResult:
     sh_c = (scripts.get("shorts") or {}).get("content") or {}
     chaps = chapters(scenes, titles=doc_c.get("act_titles"))
     files = {
-        "youtube_description.txt": doc_description(p, doc_c.get("logline"), (report or {}).get("summary"), chaps, sources, assets),
         "shorts_description.txt": shorts_description(p, sh_c.get("title")),
         "credits.txt": credits_text(conn.execute(
             "select a.*, s.kind as scene_kind, s.idx as scene_idx from scenes s join assets a on a.id = s.asset_id "
             "where s.project_id=%s order by s.kind, s.idx", (p["id"],)).fetchall()),
     }
+    if not review:
+        files["youtube_description.txt"] = doc_description(p, doc_c.get("logline"), (report or {}).get("summary"), chaps,
+                                                           sources, assets)
     keys = {}
     for name, text in files.items():
         key = storage.project_key(p["slug"], "renders", name)
         storage.upload_bytes(key, text.encode(), "text/plain; charset=utf-8")
         keys[name] = key
     return StepResult(output={"files": keys, "chapters": len(chaps),
-                              "doc_seconds": float(renders["doc"]["duration_sec"]),
+                              "doc_seconds": float(renders["doc"]["duration_sec"]) if "doc" in renders else None,
                               "shorts_seconds": float(renders["shorts"]["duration_sec"])})

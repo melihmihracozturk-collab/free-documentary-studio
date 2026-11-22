@@ -1,6 +1,6 @@
 import { Download } from "lucide-react";
 import { Card, Empty, Stat } from "./ui";
-import { getRenders, getStepState } from "@/lib/queries";
+import { getProjectFormat, getRenders, getStepState } from "@/lib/queries";
 import { db } from "@/lib/db";
 import { formatBytes, formatDate } from "@/lib/format";
 
@@ -13,6 +13,9 @@ const STEP_LABEL: Record<string, string> = { pending: "sırada", running: "çal�
 export async function RenderView({ projectId, slug, kind }: { projectId: string; slug: string; kind: "doc" | "shorts" }) {
   const [renders, step, subs] = await Promise.all([
     getRenders(projectId), getStepState(projectId, kind === "doc" ? "render_doc" : "render_shorts"), getStepState(projectId, "subtitles")]);
+  if (kind === "doc" && (await getProjectFormat(projectId)) === "review") {
+    return <Card title="Ana video"><Empty>Bu bir Ayla öneri projesi: yalnızca ≈1 dakikalık Shorts üretilir. Videoyu Shorts sayfasında bulabilirsiniz.</Empty></Card>;
+  }
   const r = renders.find((x) => x.kind === kind);
   const [{ n: restricted }] = await db()<{ n: number }[]>`
     select count(*)::int n from scenes s join assets a on a.id = s.asset_id

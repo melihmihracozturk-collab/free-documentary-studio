@@ -21,13 +21,13 @@ OPEN_SHARE, CLOSE_SHARE = 0.08, 0.06
 KIND_WORD = {"anime": "anime", "series": "TV series", "film": "film"}
 
 REVIEW_PLAN = """
-Plan a {minutes}-minute YouTube RECOMMENDATION video (anime / TV series / film picks) presented by a host.
+Plan a ~1 minute YouTube SHORTS RECOMMENDATION video (anime / TV series / film picks) presented by a host.
 Topic: {topic}
 Narration language: {lang}
 
-If the topic names specific titles, use exactly those titles (in that order). Otherwise pick 4-6 REAL, well-known titles
-that clearly fit the topic (no adult/hentai titles). Never invent a title. Order them for a good video (strong first pick,
-best pick last or first as a countdown if the topic says "top").
+The video is a ~1 minute vertical SHORTS, so keep it focused: if the topic names specific titles, use exactly those
+(at most 3, in that order). Otherwise pick 1-3 REAL, well-known titles that clearly fit the topic (no adult/hentai titles).
+Never invent a title.
 Return JSON:
 {{"titles": [{{"name_en": "official English/international title as on AniList/TMDB/Wikipedia",
               "name_native": "the title as commonly used in {lang}",
@@ -71,7 +71,7 @@ def collect(conn, step, p) -> StepResult:
     plan = llm.complete_json(conn, SYSTEM, REVIEW_PLAN.format(minutes=p["target_minutes"], topic=p["topic"],
                                                               lang=LANG_NAME.get(lang, lang)),
                              task="research_plan_review", temperature=0.3)
-    wanted = [x for x in (plan.get("titles") or []) if isinstance(x, dict) and x.get("name_en")][:7]
+    wanted = [x for x in (plan.get("titles") or []) if isinstance(x, dict) and x.get("name_en")][:3]   # Shorts: en fazla 3
     found: list[S.Source] = []
     errors: list[str] = []
     titles: list[dict] = []

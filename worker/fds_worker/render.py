@@ -248,7 +248,8 @@ def build_subtitles(conn, p, fmt: Format) -> dict:
 
 def subtitles(conn, step) -> StepResult:
     p = conn.execute("select * from projects where id=%s", (step["project_id"],)).fetchone()
-    return StepResult(output={fmt.kind: build_subtitles(conn, p, fmt_for(p, fmt)) for fmt in (DOC, SHORTS)})
+    fmts = (SHORTS,) if is_review(p) else (DOC, SHORTS)              # öneri biçimi yalnızca Shorts
+    return StepResult(output={fmt.kind: build_subtitles(conn, p, fmt_for(p, fmt)) for fmt in fmts})
 
 
 # ----------------------------------------------------------------- görüntü hareketi
@@ -619,6 +620,8 @@ def shorts_tempo(duration: float, max_seconds: float, tempo_max: float) -> tuple
 
 def render_doc(conn, step) -> StepResult:
     p = conn.execute("select format from projects where id=%s", (step["project_id"],)).fetchone()
+    if is_review(p):          # veritabanı bu adımı zaten atlar; yine de çalıştırılırsa uzun video üretilmez
+        return StepResult(output={"skipped": "Öneri biçimi yalnızca Shorts üretir"})
     return render_video(conn, step, fmt_for(p, DOC), "documentary.mp4")
 
 

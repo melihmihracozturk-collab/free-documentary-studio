@@ -1,6 +1,6 @@
 # Öneri videoları: animasyonlu kadın sunucu (Ayla)
 
-Anime / dizi / film öneri videoları için yeni bir biçim (`format = 'review'`). Videoyu, kodla çizilmiş 2D anime tarzı
+Anime / dizi / film öneri **Shorts'ları** (≈1 dakika, dikey) için yeni bir biçim (`format = 'review'`). Videoyu, kodla çizilmiş 2D anime tarzı
 bir kadın sunucu anlatır: ninja kostümlü, kızıl gözlü, yırtıcı bakışlı Ayla (pençe izli alın plakası, kırmızı atkı, omuz zırhı, sırtında kılıç). Sunucu göz kırpar, nefes alır, başını sallar, ağzı sese göre hareket eder. Sunucunun yanında
 her yapımı anlatan hareketli grafikler yer alır: afiş kartı, bilgi kartı, renk paleti animasyonu ve tam ekran afiş.
 
@@ -27,20 +27,25 @@ Bilgisayarınıza hiçbir şey kurulmaz; her şey mevcut stüdyonun bulut hattı
 
 ## Akış
 
-1. **Yeni proje → "Anime / dizi / film önerisi".** Konu bir tema olabilir ("Bu kış izlenecek 5 fantastik anime")
-   ya da doğrudan yapım listesi ("Frieren, Dark, Arcane").
-2. **Araştırma:** LLM 4–6 gerçek yapım seçer. Her yapım AniList'te (anime), TMDB'de (anahtar varsa) ve Vikipedi'de
-   aranır. **Hiçbir katalogda bulunamayan yapım listeden çıkarılır**, böylece uydurma bir yapım önerilmez. İddialar,
-   belgeseldeki gibi kaynaktan birebir alıntıyla doğrulanır. Araştırma onayı yine sizdedir.
-3. **Senaryo:** önce giriş, sonra her yapım için bir bölüm, en sonda kapanış. Sunucu birinci ağızdan, sıcak ve
-   **spoiler'sız** konuşur. Görüş bildirmek serbesttir; yıl, stüdyo, bölüm sayısı, puan ve konu gibi olgular ise
-   iddialardan gelir ve kodla denetlenir. Shorts'ta sunucu yapımları hızlıca sıralar. Senaryo onayı yine sizdedir.
-4. **Ses:** onaydan sonra işçi metni Edge TTS ile seslendirir (çalışmazsa Gemini TTS). Yükleme beklenmez. İsterseniz
-   Seslendirme sayfasından kendi kaydınızı yükleyerek otomatik sesi değiştirebilirsiniz.
+**Öneri biçimi yalnızca ≈1 dakikalık dikey Shorts üretir (1080×1920, en fazla 58 sn). Uzun video yoktur.** Uzun videonun
+senaryo ve render adımları öneri projelerinde veritabanı tarafından otomatik olarak "atlandı" yapılır
+(`0015_review_shorts_only.sql`). Belgesel ve vlog projeleri etkilenmez.
+
+1. **Yeni proje → "Anime / dizi / film önerisi".** Konu tek bir yapım ("Bleach"), en fazla 3 yapım ("Frieren, Dark,
+   Arcane") ya da bir tema olabilir ("Bu kış izlenecek fantastik animeler"). Süre seçilmez.
+2. **Araştırma:** LLM en fazla 3 gerçek yapım seçer. Her yapım AniList'te (anime), TMDB'de (anahtar varsa) ve
+   Vikipedi'de aranır. **Hiçbir katalogda bulunamayan yapım listeden çıkarılır**, böylece uydurma bir yapım önerilmez.
+   İddialar kaynaktan birebir alıntıyla doğrulanır. Araştırma onayı sizdedir.
+3. **Shorts senaryosu:** kanca → yapımlar (spoiler'sız) → izleyiciye kısa bir soru. Ayla birinci ağızdan konuşur.
+   Görüş bildirmek serbesttir; olgular iddialardan gelir ve kodla denetlenir. Senaryo onayı sizdedir.
+4. **Ses:** onaydan sonra işçi Shorts metnini Edge TTS ile seslendirir (çalışmazsa Gemini TTS). Yükleme beklenmez.
+   İsterseniz Seslendirme sayfasından kendi kaydınızı yükleyerek otomatik sesi değiştirebilirsiniz.
 5. **Görseller:** her yapımın afişi indirilir ve o yapımın sahnelerine atanır. Afiş önceliği: TMDB, sonra AniList,
-   sonra Vikipedi.
-6. **Render:** sahne başına hareketli grafik üretilir. Sunucu tüm video boyunca ayrı bir saydam katman olarak üstte
-   durur. Altyazı sunucunun üstüne binmez: yatayda sol alanda, dikeyde sunucunun hemen üstünde görünür.
+   sonra Vikipedi. Görsel onayı sizdedir.
+6. **Render:** sahne başına hareketli grafik üretilir. Ayla alt bölümde saydam bir katman olarak durur. Altyazı
+   Ayla'nın hemen üstündeki bantta görünür, grafiklerin üstüne binmez.
+7. **Teslim:** Shorts videosu, `shorts_description.txt` (afiş telif notu, TMDB atfı ve yapay zekâ sesi notu dahil)
+   ve `credits.txt`.
 
 ### Sahne düzenleri
 
@@ -65,7 +70,7 @@ Düzenler kodla atanır: giriş ve kapanış `host`, her yapımın ilk sahnesi `
 
 ## Kurulum (yalnızca yeni olanlar)
 
-1. **Şema:** Actions → *migrate* → *Run workflow* (`0013_license_draft.sql` ve `0014_review.sql` uygulanır).
+1. **Şema:** Actions → *migrate* → *Run workflow* (`0013_license_draft.sql`, `0014_review.sql` ve `0015_review_shorts_only.sql` uygulanır).
 2. **İsteğe bağlı, TMDB anahtarı:** themoviedb.org'da ücretsiz hesap açın → Settings → API → anahtar
    (v3 "API Key" ya da v4 "Read Access Token") → GitHub Secrets'a `TMDB_API_KEY` olarak ekleyin. Anahtar yoksa anime
    için AniList, film/dizi için Vikipedi kullanılır.
@@ -105,10 +110,10 @@ Görünüm değişince `PRESENTER_VERSION` değerini artırın; önbellekteki es
   geçer. Açıklamada sesin yapay zekâ ile üretildiği belirtilir (YouTube'un sentetik içerik politikası).
 - Sunucu karakter ve tüm animasyonlar özgün olarak kodla üretilmiştir; telif sorunu yoktur.
 
-## Performans (GitHub Actions, 10 dakikalık video için tahmini)
+## Performans (GitHub Actions, 1 dakikalık Shorts için tahmini)
 
-- Sunucu katmanı: kare başına yaklaşık 20 ms → yaklaşık 5 dakika
-- Sahne grafikleri: videonun her saniyesi için yaklaşık 1 saniye → yaklaşık 10 dakika
-- Birleştirme: belgeselle aynı
+- Sunucu katmanı: kare başına yaklaşık 20 ms → yaklaşık 40 saniye
+- Sahne grafikleri: videonun her saniyesi için yaklaşık 1–2 saniye → yaklaşık 1–2 dakika
+- Ses analizi (whisper) ve birleştirme: birkaç dakika
 
 Render yarıda kalırsa sahne klipleri ve sunucu videosu R2'den yeniden kullanılır.

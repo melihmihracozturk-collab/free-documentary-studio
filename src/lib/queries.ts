@@ -59,6 +59,13 @@ export async function listProjects() {
      order by p.updated_at desc`;
 }
 
+/** Projenin biçimi (documentary | vlog | review). Öneri (Ayla) projeleri yalnızca Shorts üretir. */
+export async function getProjectFormat(projectId: string) {
+  await connection();
+  const [p] = await db()<{ format: Project["format"] }[]>`select format from projects where id = ${projectId}`;
+  return p?.format ?? "documentary";
+}
+
 export async function getProject(slug: string) {
   await connection();
   const [p] = await db()<Project[]>`select * from projects where slug = ${slug}`;

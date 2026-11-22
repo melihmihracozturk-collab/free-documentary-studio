@@ -1,7 +1,7 @@
 import { Download } from "lucide-react";
 import { Card, Empty, StatusBadge } from "./ui";
 import { VoiceoverUpload } from "./VoiceoverUpload";
-import { getScripts, getStepState, getVoiceovers, type Voiceover } from "@/lib/queries";
+import { getProjectFormat, getScripts, getStepState, getVoiceovers, type Voiceover } from "@/lib/queries";
 import { r2Configured } from "@/lib/r2";
 import { formatBytes } from "@/lib/format";
 
@@ -31,14 +31,16 @@ function Analysis({ v }: { v: Voiceover }) {
 }
 
 export async function VoiceoverView({ projectId, slug }: { projectId: string; slug: string }) {
-  const [vos, review, texts, scripts] = await Promise.all([
-    getVoiceovers(projectId), getStepState(projectId, "script_review"), getStepState(projectId, "voiceover_texts"), getScripts(projectId)]);
+  const [vos, review, texts, scripts, format] = await Promise.all([
+    getVoiceovers(projectId), getStepState(projectId, "script_review"), getStepState(projectId, "voiceover_texts"), getScripts(projectId),
+    getProjectFormat(projectId)]);
+  const kinds = format === "review" ? (["shorts"] as const) : (["doc", "shorts"] as const);   // Ayla: yalnızca Shorts
   const approved = review?.status === "done";
   if (!approved) {
     return <Card title="Seslendirme"><Empty>Önce senaryoyu Senaryo sayfasında okuyup onaylayın. ElevenLabs metinleri onaylı senaryodan üretilir.</Empty></Card>;
   }
   const r2 = r2Configured();
-  const auto = scripts.doc?.content.format === "review";
+  const auto = format === "review";
   return (
     <>
       {auto && (
@@ -56,7 +58,7 @@ export async function VoiceoverView({ projectId, slug }: { projectId: string; sl
           ElevenLabs&apos;te seslendirip MP3 veya WAV olarak indirin.
         </p>
         <div className="flex flex-wrap gap-3">
-          {(["doc", "shorts"] as const).map((k) => {
+          {kinds.map((k) => {
             const s = k === "doc" ? scripts.doc : scripts.shorts;
             const chars = (k === "doc" ? scripts.docScenes : scripts.shortsScenes).reduce((n, x) => n + x.voiceover_text.length + 2, 0);
             return (
@@ -77,7 +79,7 @@ export async function VoiceoverView({ projectId, slug }: { projectId: string; sl
       <Card title="2 · Ses dosyalarını yükleyin">
         {!r2 && <p className="mb-3 text-sm text-amber-200">Cloudflare R2 yapılandırılmadığı için yükleme kapalı (Ayarlar → servis bağlantıları).</p>}
         <div className="grid gap-4 md:grid-cols-2">
-          {(["doc", "shorts"] as const).map((k) => {
+          {kinds.map((k) => {
             const v = vos.find((x) => x.kind === k);
             return (
               <div key={k} className="space-y-3 rounded-lg border border-white/5 bg-zinc-950/40 p-4">
@@ -105,7 +107,7 @@ export async function VoiceoverView({ projectId, slug }: { projectId: string; sl
 
       {vos.some((v) => v.status === "analyzed") && (
         <Card title="3 · Sahne zamanları (gerçek sesten)">
-          {(["doc", "shorts"] as const).map((k) => {
+          {kinds.map((k) => {
             const v = vos.find((x) => x.kind === k && x.status === "analyzed");
             const scenes = k === "doc" ? scripts.docScenes : scripts.shortsScenes;
             const times = v?.analysis?.scene_times ?? [];
