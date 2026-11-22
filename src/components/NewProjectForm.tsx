@@ -32,7 +32,7 @@ export function NewProjectForm({ defaultMinutes }: { defaultMinutes: number }) {
           <img src="/sunucu.svg" alt="Sunucu karakter Ayla" width={96} height={125} className="h-32 w-auto" />
           <p className="text-xs text-zinc-400">
             <span className="block text-sm font-medium text-zinc-100">Sunucu: Ayla</span>
-            Kodla çizilmiş 2D anime tarzı karakter. Videoda göz kırpar, nefes alır, başını sallar ve ağzı sese göre
+            Kodla çizilmiş 2D anime tarzı ninja: kızıl gözler, pençe izli alın plakası, kırmızı atkı ve sırtında kılıç. Videoda göz kırpar, nefes alır, başını sallar ve ağzı sese göre
             hareket eder. Giriş/kapanışta büyük, yapım kartlarında köşede görünür; tam ekran afiş sahnelerinde çekilir.
           </p>
         </div>

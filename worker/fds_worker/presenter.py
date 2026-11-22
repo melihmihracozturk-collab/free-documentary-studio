@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-PRESENTER_VERSION = "p1"
+PRESENTER_VERSION = "p2"      # p2: ninja kostümü
 VIEW_W, VIEW_H = 1000, 1300
 PIVOT = (500, 640)                 # boyun üstü: baş bu noktanın çevresinde döner
 HEAD_BOX = (250, 110, 760, 760)    # baş katmanlarının kırpma kutusu (dönüş payı dahil)
@@ -29,12 +29,14 @@ BACK_BOX = (180, 110, 820, 1300)
 BODY_BOX = (230, 580, 770, 1300)
 
 C = {
-    "skin": "#FBE5D8", "skin_sh": "#F1C3B0", "blush": "#F59AA6",
-    "hair": "#3A2A5C", "hair_dark": "#2A1D45", "hair_hi": "#6B58A3",
-    "iris": "#8A5CF0", "iris_dark": "#3E2185", "lash": "#24163A", "white": "#FFFFFF",
-    "lip": "#D9636F", "mouth": "#7A2338", "tongue": "#E8838E", "teeth": "#FFFFFF",
-    "hoodie": "#F4EFE8", "hoodie_sh": "#DCD3C8", "accent": "#9B7BF0",
-    "phones": "#2F2C3D", "phones_hi": "#4A4660", "star": "#FFD166",
+    "skin": "#F8E1D4", "skin_sh": "#E7B9A6", "blush": "#E87A86",
+    "hair": "#262033", "hair_dark": "#120F1A", "hair_hi": "#9C2F45",
+    "iris": "#FF4A3D", "iris_dark": "#7A0E1C", "lash": "#140E1C", "white": "#FFF8F4",
+    "lip": "#B8424F", "mouth": "#5E1022", "tongue": "#D9707C", "teeth": "#FFFFFF",
+    "suit": "#1E1C29", "suit_sh": "#13121B", "suit_hi": "#34314A", "mesh": "#4A4560",
+    "scarf": "#C8202F", "scarf_sh": "#8E1220", "armor": "#3A3F4E", "armor_hi": "#6B7388",
+    "metal": "#B9C0CC", "metal_sh": "#7E8696", "band": "#3A3650", "paint": "#D3202F",
+    "wrap": "#C8202F", "blade": "#2A2833",
 }
 
 EYES = ("open", "half", "closed")
@@ -45,142 +47,176 @@ MOUTHS = ("rest", "a", "b", "wide", "o", "e")
 def _svg(body: str) -> str:
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {VIEW_W} {VIEW_H}" width="{VIEW_W}" height="{VIEW_H}">'
             f'<defs>'
-            f'<radialGradient id="iris" cx="50%" cy="62%" r="60%"><stop offset="0" stop-color="{C["iris"]}"/>'
+            f'<radialGradient id="iris" cx="50%" cy="65%" r="60%"><stop offset="0" stop-color="{C["iris"]}"/>'
             f'<stop offset="1" stop-color="{C["iris_dark"]}"/></radialGradient>'
             f'<linearGradient id="hairg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{C["hair"]}"/>'
             f'<stop offset="1" stop-color="{C["hair_dark"]}"/></linearGradient>'
+            f'<linearGradient id="plate" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{C["metal"]}"/>'
+            f'<stop offset="1" stop-color="{C["metal_sh"]}"/></linearGradient>'
             f'</defs>{body}</svg>')
 
 
 # ----------------------------------------------------------------- katmanlar (SVG)
 def layer_back_hair() -> str:
+    """Arka katman: başın arkası, yüksek at kuyruğu, alın bandının uçları ve sırttaki kılıcın kabzası."""
+    c = C
     return _svg(f"""
-<path fill="url(#hairg)" d="M300 420 C270 250 380 150 500 150 C620 150 730 250 700 420
-  C720 560 760 700 770 860 C772 930 740 990 700 1010 C690 940 660 900 640 880 L360 880
-  C340 900 310 940 300 1010 C260 990 228 930 230 860 C240 700 280 560 300 420 Z"/>""")
+<g transform="rotate(32 690 740)">
+  <rect x="677" y="560" width="26" height="160" rx="6" fill="{c['wrap']}"/>
+  <path fill="none" stroke="{c['scarf_sh']}" stroke-width="5" d="M677 580 L703 600 M677 605 L703 625 M677 630 L703 650 M677 655 L703 675 M677 680 L703 700 M703 580 L677 600 M703 605 L677 625 M703 630 L677 650 M703 655 L677 675 M703 680 L677 700"/>
+  <rect x="671" y="548" width="38" height="16" rx="6" fill="{c['metal_sh']}"/>
+  <ellipse cx="690" cy="724" rx="46" ry="12" fill="{c['metal']}" stroke="{c['metal_sh']}" stroke-width="4"/>
+  <rect x="674" y="734" width="32" height="300" fill="{c['blade']}"/>
+</g>
+<path fill="url(#hairg)" d="M320 420 C300 260 390 170 500 170 C610 170 700 260 680 420 C690 520 660 600 600 640 L400 640 C340 600 310 520 320 420 Z"/>
+<path fill="url(#hairg)" d="M470 190 C520 150 600 160 640 200 C700 260 700 360 670 460 C640 580 600 700 580 830
+  C570 900 560 960 520 1030 C530 950 520 900 500 860 C470 760 470 640 500 520 C520 420 520 300 470 190 Z"/>
+<path fill="none" stroke="{c['hair_hi']}" stroke-width="8" stroke-linecap="round" opacity="0.7" d="M630 260 C660 360 640 520 600 700"/>
+<path fill="{c['band']}" d="M330 330 C300 360 260 400 222 470 C250 460 270 452 290 450 C300 420 320 380 345 350 Z"/>
+<path fill="{c['band']}" d="M340 345 C320 400 300 470 282 540 C305 520 322 505 338 500 C340 450 350 400 362 360 Z"/>""")
 
 
 def layer_body() -> str:
     c = C
     return _svg(f"""
-<path fill="{c['skin_sh']}" d="M452 590 L548 590 L552 735 C530 750 470 750 448 735 Z"/>
-<path fill="{c['skin_sh']}" opacity="0.9" d="M452 600 C470 640 530 640 548 600 L548 650 C525 670 475 670 452 650 Z"/>
-<path fill="{c['hoodie_sh']}" d="M360 742 C400 700 450 705 500 728 C550 705 600 700 640 742 L600 790 L400 790 Z"/>
-<path fill="{c['hoodie']}" d="M250 1300 L262 900 C268 820 300 770 360 745 C410 728 445 730 470 752
-  L500 800 L530 752 C555 730 590 728 640 745 C700 770 732 820 738 900 L750 1300 Z"/>
-<path fill="none" stroke="{c['hoodie_sh']}" stroke-width="6" stroke-linecap="round" d="M330 900 C335 1000 330 1120 325 1300"/>
-<path fill="none" stroke="{c['hoodie_sh']}" stroke-width="6" stroke-linecap="round" d="M670 900 C665 1000 670 1120 675 1300"/>
-<path fill="{c['hoodie_sh']}" d="M470 752 L500 800 L530 752 C520 790 510 815 500 822 C490 815 480 790 470 752 Z"/>
-<path fill="none" stroke="{c['accent']}" stroke-width="7" stroke-linecap="round" d="M468 790 C462 850 466 900 460 950"/>
-<path fill="none" stroke="{c['accent']}" stroke-width="7" stroke-linecap="round" d="M532 790 C538 850 534 900 540 955"/>
-<circle cx="460" cy="958" r="9" fill="{c['accent']}"/><circle cx="540" cy="962" r="9" fill="{c['accent']}"/>
-<rect x="420" y="1080" width="160" height="110" rx="26" fill="{c['hoodie_sh']}" opacity="0.55"/>
-<path fill="none" stroke="{c['phones']}" stroke-width="18" stroke-linecap="round" d="M392 742 C410 800 590 800 608 742"/>
-<rect x="366" y="690" width="52" height="86" rx="24" fill="{c['phones']}" transform="rotate(-18 392 733)"/>
-<rect x="582" y="690" width="52" height="86" rx="24" fill="{c['phones']}" transform="rotate(18 608 733)"/>
-<rect x="378" y="706" width="26" height="54" rx="13" fill="{c['phones_hi']}" transform="rotate(-18 392 733)"/>
-<rect x="596" y="706" width="26" height="54" rx="13" fill="{c['phones_hi']}" transform="rotate(18 608 733)"/>
-<circle cx="392" cy="733" r="7" fill="{c['accent']}"/><circle cx="608" cy="733" r="7" fill="{c['accent']}"/>""")
+<path fill="{c['skin_sh']}" d="M454 590 L546 590 L550 735 C530 750 470 750 450 735 Z"/>
+<path fill="{c['skin_sh']}" opacity="0.9" d="M454 600 C470 640 530 640 546 600 L546 650 C525 670 475 670 454 650 Z"/>
+<path fill="{c['suit']}" d="M250 1300 L258 900 C262 820 300 768 365 742 C410 726 440 728 462 740 L500 860 L538 740
+  C560 728 590 726 635 742 C700 768 738 820 742 900 L750 1300 Z"/>
+<path fill="{c['mesh']}" d="M462 740 L500 860 L538 740 C520 760 480 760 462 740 Z"/>
+<path fill="none" stroke="{c['suit_sh']}" stroke-width="2" opacity="0.9"
+  d="M468 752 L520 800 M476 770 L512 804 M486 792 L506 812 M532 752 L480 800 M524 770 L488 804 M514 792 L494 812"/>
+<path fill="{c['suit_hi']}" d="M462 740 L520 905 L512 912 L452 748 Z"/>
+<path fill="{c['suit_hi']}" d="M538 740 L486 870 L494 878 L548 748 Z" opacity="0.8"/>
+<path fill="none" stroke="{c['suit_sh']}" stroke-width="6" stroke-linecap="round" d="M330 900 C335 1000 330 1120 325 1300"/>
+<path fill="none" stroke="{c['suit_sh']}" stroke-width="6" stroke-linecap="round" d="M670 900 C665 1000 670 1120 675 1300"/>
+<path fill="{c['scarf']}" d="M270 1170 L730 1150 L736 1235 L264 1250 Z"/>
+<path fill="{c['scarf_sh']}" d="M270 1170 L730 1150 L731 1168 L270 1188 Z"/>
+<path fill="{c['scarf']}" d="M560 1200 C590 1230 600 1270 596 1300 L560 1300 C560 1270 552 1240 536 1215 Z"/>
+<path fill="{c['armor']}" d="M610 748 C670 744 728 780 744 850 C722 862 690 864 660 856 C650 812 632 780 600 764 Z"/>
+<path fill="{c['armor_hi']}" d="M622 760 C670 760 712 790 726 838 C712 842 700 842 688 840 C676 806 656 780 618 770 Z" opacity="0.7"/>
+<path fill="none" stroke="{c['suit_sh']}" stroke-width="5" d="M640 790 C680 790 712 816 724 846"/>
+<path fill="{c['scarf']}" d="M405 735 C440 700 560 700 595 735 C602 760 596 785 585 800 C540 820 460 820 415 800 C404 785 398 760 405 735 Z"/>
+<path fill="{c['scarf_sh']}" d="M415 790 C460 808 540 808 585 790 L585 800 C540 820 460 820 415 800 Z"/>
+<path fill="none" stroke="{c['scarf_sh']}" stroke-width="5" stroke-linecap="round" d="M425 760 C470 776 530 776 575 760"/>
+<path fill="{c['scarf']}" d="M420 790 C390 860 360 930 300 1010 C340 1000 370 990 395 970 C392 1000 380 1030 360 1060
+  C410 1030 440 980 455 930 C465 880 462 840 458 810 Z"/>
+<path fill="{c['scarf_sh']}" d="M440 812 C430 880 410 940 380 990 C400 970 420 940 434 900 C446 860 450 830 448 812 Z" opacity="0.8"/>""")
 
 
 def layer_face() -> str:
     c = C
     return _svg(f"""
-<ellipse cx="362" cy="468" rx="22" ry="34" fill="{c['skin_sh']}"/>
-<ellipse cx="638" cy="468" rx="22" ry="34" fill="{c['skin_sh']}"/>
-<path fill="{c['skin']}" d="M362 380 C358 500 410 590 470 628 C488 640 512 640 530 628 C590 590 642 500 638 380
-  C636 270 364 270 362 380 Z"/>
-<ellipse cx="418" cy="530" rx="34" ry="16" fill="{c['blush']}" opacity="0.45"/>
-<ellipse cx="582" cy="530" rx="34" ry="16" fill="{c['blush']}" opacity="0.45"/>
-<path fill="none" stroke="{c['skin_sh']}" stroke-width="5" stroke-linecap="round" d="M500 508 L494 528 L503 530"/>""")
+<ellipse cx="364" cy="468" rx="20" ry="32" fill="{c['skin_sh']}"/>
+<ellipse cx="636" cy="468" rx="20" ry="32" fill="{c['skin_sh']}"/>
+<path fill="{c['skin']}" d="M364 380 C360 500 412 584 472 626 C490 640 510 640 528 626 C588 584 640 500 636 380
+  C634 270 366 270 364 380 Z"/>
+<ellipse cx="420" cy="534" rx="26" ry="10" fill="{c['blush']}" opacity="0.22"/>
+<ellipse cx="580" cy="534" rx="26" ry="10" fill="{c['blush']}" opacity="0.22"/>
+<path fill="{c['paint']}" d="M396 512 L446 506 L442 514 L398 518 Z"/>
+<path fill="{c['paint']}" d="M604 512 L554 506 L558 514 L602 518 Z"/>
+<path fill="none" stroke="{c['skin_sh']}" stroke-width="5" stroke-linecap="round" d="M500 506 L494 526 L503 528"/>""")
 
 
 def _eye(cx: float, cy: float, state: str, flip: bool) -> str:
+    """Badem biçimli, dış köşesi yukarı kalkık, kalın eyeliner'lı, dikey göz bebekli yırtıcı göz."""
     c = C
     s = -1 if flip else 1
+    i, o = cx - 40 * s, cx + 42 * s               # iç ve dış köşe
     if state == "closed":
         return (f'<path fill="none" stroke="{c["lash"]}" stroke-width="9" stroke-linecap="round" '
-                f'd="M{cx - 40} {cy + 2} C{cx - 20} {cy + 20} {cx + 20} {cy + 20} {cx + 40} {cy + 2}"/>'
-                f'<path fill="none" stroke="{c["lash"]}" stroke-width="5" stroke-linecap="round" '
-                f'd="M{cx + 40 * s} {cy + 2} L{cx + 52 * s} {cy - 6}"/>')
-    white = (f'<path fill="{c["white"]}" d="M{cx - 40} {cy - 4} C{cx - 30} {cy - 38} {cx + 30} {cy - 38} {cx + 40} {cy - 4}'
-             f' C{cx + 34} {cy + 30} {cx - 34} {cy + 30} {cx - 40} {cy - 4} Z"/>')
-    iris = (f'<ellipse cx="{cx}" cy="{cy + 2}" rx="25" ry="31" fill="url(#iris)"/>'
-            f'<ellipse cx="{cx}" cy="{cy + 6}" rx="11" ry="15" fill="{c["iris_dark"]}"/>'
-            f'<circle cx="{cx - 9 * s}" cy="{cy - 10}" r="9" fill="{c["white"]}"/>'
-            f'<circle cx="{cx + 10 * s}" cy="{cy + 14}" r="4" fill="{c["white"]}" opacity="0.9"/>')
-    clip = f'<clipPath id="e{int(cx)}"><path d="M{cx - 40} {cy - 4} C{cx - 30} {cy - 38} {cx + 30} {cy - 38} {cx + 40} {cy - 4} C{cx + 34} {cy + 30} {cx - 34} {cy + 30} {cx - 40} {cy - 4} Z"/></clipPath>'
+                f'd="M{i} {cy + 4} C{cx - 10 * s} {cy + 16} {cx + 18 * s} {cy + 10} {o} {cy - 6}"/>'
+                f'<path fill="{c["lash"]}" d="M{o} {cy - 6} L{o + 22 * s} {cy - 18} L{o + 4 * s} {cy + 2} Z"/>')
+    shape = (f'M{i} {cy + 6} C{cx - 20 * s} {cy - 26} {cx + 18 * s} {cy - 34} {o} {cy - 12}'
+             f' C{cx + 26 * s} {cy + 20} {cx - 16 * s} {cy + 26} {i} {cy + 6} Z')
+    white = f'<path fill="{c["white"]}" d="{shape}"/>'
+    iris = (f'<ellipse cx="{cx + 2 * s}" cy="{cy - 2}" rx="22" ry="27" fill="url(#iris)"/>'
+            f'<ellipse cx="{cx + 2 * s}" cy="{cy - 2}" rx="4.5" ry="19" fill="{c["lash"]}"/>'
+            f'<circle cx="{cx - 8 * s}" cy="{cy - 12}" r="6" fill="{c["white"]}"/>'
+            f'<circle cx="{cx + 10 * s}" cy="{cy + 10}" r="3" fill="{c["white"]}" opacity="0.85"/>')
+    clip = f'<clipPath id="e{int(cx)}"><path d="{shape}"/></clipPath>'
     lid = ""
-    top = cy - 30                       # üst kirpik çizgisinin orta yüksekliği
     if state == "half":
-        lid = f'<rect x="{cx - 45}" y="{cy - 45}" width="90" height="46" fill="{c["skin"]}"/>'
-        top = cy - 4
-    o = cx + 44 * s                      # dış köşe
-    i = cx - 42 * s                      # iç köşe
-    lash = (f'<path fill="{c["lash"]}" d="M{i} {top + 26} C{cx - 22 * s} {top - 4} {cx + 22 * s} {top - 4} {o} {top + 20}'
-            f' L{o + 14 * s} {top + 8} C{cx + 24 * s} {top - 16} {cx - 24 * s} {top - 14} {i - 4 * s} {top + 20} Z"/>')
-    lower = (f'<path fill="none" stroke="{c["lash"]}" stroke-width="3" stroke-linecap="round" opacity="0.35" '
-             f'd="M{cx + 6 * s} {cy + 28} C{cx + 18 * s} {cy + 27} {cx + 28 * s} {cy + 24} {cx + 34 * s} {cy + 18}"/>')
+        lid = f'<rect x="{cx - 50}" y="{cy - 45}" width="100" height="44" fill="{c["skin"]}"/>'
+    if state == "half":
+        top = (f'M{i - 2 * s} {cy + 2} C{cx - 10 * s} {cy - 6} {cx + 20 * s} {cy - 8} {o} {cy - 8}'
+               f' L{o + 26 * s} {cy - 22} L{o + 6 * s} {cy - 2} C{cx + 18 * s} {cy - 2} {cx - 10 * s} {cy + 2} {i - 2 * s} {cy + 8} Z')
+    else:
+        top = (f'M{i - 4 * s} {cy + 8} C{cx - 22 * s} {cy - 30} {cx + 18 * s} {cy - 40} {o} {cy - 14}'
+               f' L{o + 28 * s} {cy - 30} L{o + 8 * s} {cy - 6} C{cx + 16 * s} {cy - 28} {cx - 18 * s} {cy - 20} {i + 2 * s} {cy + 6} Z')
+    lash = f'<path fill="{c["lash"]}" d="{top}"/>'
+    lower = (f'<path fill="none" stroke="{c["lash"]}" stroke-width="3" stroke-linecap="round" opacity="0.55" '
+             f'd="M{cx + 4 * s} {cy + 21} C{cx + 18 * s} {cy + 18} {cx + 30 * s} {cy + 10} {o} {cy - 8}"/>')
     return f'<defs>{clip}</defs><g clip-path="url(#e{int(cx)})">{white}{iris}{lid}</g>{lash}{lower}'
 
 
 def layer_eyes(state: str) -> str:
-    return _svg(_eye(438, 460, state, True) + _eye(562, 460, state, False))
+    return _svg(_eye(438, 462, state, True) + _eye(562, 462, state, False))
 
 
 def layer_brows(state: str) -> str:
-    dy = -14 if state == "up" else 0
+    """Çatık, keskin kaşlar: iç uçlar aşağıda (kararlı / yırtıcı ifade). 'up' = kaşlar kalkar ama keskin kalır."""
+    dy = -12 if state == "up" else 0
+    tilt = 6 if state == "up" else 14
     c = C
     return _svg(f"""
-<path fill="none" stroke="{c['hair_dark']}" stroke-width="8" stroke-linecap="round" d="M400 {404 + dy} C420 {392 + dy} 450 {390 + dy} 474 {398 + dy}"/>
-<path fill="none" stroke="{c['hair_dark']}" stroke-width="8" stroke-linecap="round" d="M526 {398 + dy} C550 {390 + dy} 580 {392 + dy} 600 {404 + dy}"/>""")
+<path fill="{c['hair_dark']}" d="M398 {396 + dy} C420 {388 + dy} 450 {394 + dy} 478 {396 + dy + tilt} L476 {404 + dy + tilt} C450 {402 + dy} 424 {398 + dy} 400 {403 + dy} Z"/>
+<path fill="{c['hair_dark']}" d="M602 {396 + dy} C580 {388 + dy} 550 {394 + dy} 522 {396 + dy + tilt} L524 {404 + dy + tilt} C550 {402 + dy} 576 {398 + dy} 600 {403 + dy} Z"/>""")
+
+
+def _fang(x: float, y: float) -> str:
+    return f'<path fill="{C["teeth"]}" d="M{x - 6} {y} L{x + 6} {y} L{x} {y + 13} Z"/>'
 
 
 def layer_mouth(shape: str) -> str:
     c = C
     x, y = 500, 572
-    if shape == "rest":
+    if shape == "rest":                                        # alaycı yarım gülümseme + küçük köpek dişi
         body = (f'<path fill="none" stroke="{c["mouth"]}" stroke-width="6" stroke-linecap="round" '
-                f'd="M{x - 22} {y - 2} C{x - 10} {y + 10} {x + 10} {y + 10} {x + 22} {y - 2}"/>')
+                f'd="M{x - 20} {y + 2} C{x - 6} {y + 6} {x + 10} {y + 4} {x + 24} {y - 8}"/>'
+                + _fang(x + 12, y + 2))
     elif shape == "a":
-        body = (f'<path fill="{c["mouth"]}" d="M{x - 20} {y - 4} C{x - 10} {y - 8} {x + 10} {y - 8} {x + 20} {y - 4}'
-                f' C{x + 14} {y + 12} {x - 14} {y + 12} {x - 20} {y - 4} Z"/>')
+        body = (f'<path fill="{c["mouth"]}" d="M{x - 20} {y - 4} C{x - 10} {y - 8} {x + 10} {y - 10} {x + 22} {y - 8}'
+                f' C{x + 14} {y + 12} {x - 14} {y + 12} {x - 20} {y - 4} Z"/>' + _fang(x + 12, y - 7))
     elif shape == "b":
-        body = (f'<path fill="{c["mouth"]}" d="M{x - 26} {y - 6} C{x - 12} {y - 10} {x + 12} {y - 10} {x + 26} {y - 6}'
+        body = (f'<path fill="{c["mouth"]}" d="M{x - 26} {y - 6} C{x - 12} {y - 10} {x + 12} {y - 12} {x + 28} {y - 10}'
                 f' C{x + 20} {y + 22} {x - 20} {y + 22} {x - 26} {y - 6} Z"/>'
                 f'<path fill="{c["tongue"]}" d="M{x - 13} {y + 12} C{x - 6} {y + 4} {x + 6} {y + 4} {x + 13} {y + 12}'
-                f' C{x + 6} {y + 17} {x - 6} {y + 17} {x - 13} {y + 12} Z"/>')
+                f' C{x + 6} {y + 17} {x - 6} {y + 17} {x - 13} {y + 12} Z"/>' + _fang(x + 15, y - 9) + _fang(x - 14, y - 7))
     elif shape == "wide":
-        body = (f'<path fill="{c["mouth"]}" d="M{x - 30} {y - 8} C{x - 14} {y - 12} {x + 14} {y - 12} {x + 30} {y - 8}'
+        body = (f'<path fill="{c["mouth"]}" d="M{x - 30} {y - 8} C{x - 14} {y - 12} {x + 14} {y - 14} {x + 32} {y - 12}'
                 f' C{x + 26} {y + 34} {x - 26} {y + 34} {x - 30} {y - 8} Z"/>'
-                f'<path fill="{c["teeth"]}" d="M{x - 24} {y - 7} C{x - 10} {y - 10} {x + 10} {y - 10} {x + 24} {y - 7}'
+                f'<path fill="{c["teeth"]}" d="M{x - 24} {y - 7} C{x - 10} {y - 10} {x + 10} {y - 11} {x + 26} {y - 9}'
                 f' L{x + 22} {y} C{x + 8} {y + 2} {x - 8} {y + 2} {x - 22} {y} Z"/>'
                 f'<path fill="{c["tongue"]}" d="M{x - 16} {y + 22} C{x - 8} {y + 12} {x + 8} {y + 12} {x + 16} {y + 22}'
-                f' C{x + 8} {y + 28} {x - 8} {y + 28} {x - 16} {y + 22} Z"/>')
+                f' C{x + 8} {y + 28} {x - 8} {y + 28} {x - 16} {y + 22} Z"/>' + _fang(x + 18, y - 2) + _fang(x - 17, y - 1))
     elif shape == "o":
         body = (f'<ellipse cx="{x}" cy="{y + 6}" rx="14" ry="18" fill="{c["mouth"]}"/>'
                 f'<ellipse cx="{x}" cy="{y + 15}" rx="8" ry="6" fill="{c["tongue"]}"/>')
-    else:  # "e": geniş, dişler görünür
-        body = (f'<path fill="{c["mouth"]}" d="M{x - 30} {y - 4} C{x - 14} {y - 8} {x + 14} {y - 8} {x + 30} {y - 4}'
+    else:  # "e": geniş, dişler ve köpek dişleri görünür (sırıtma)
+        body = (f'<path fill="{c["mouth"]}" d="M{x - 30} {y - 4} C{x - 14} {y - 8} {x + 14} {y - 10} {x + 32} {y - 8}'
                 f' C{x + 24} {y + 14} {x - 24} {y + 14} {x - 30} {y - 4} Z"/>'
-                f'<path fill="{c["teeth"]}" d="M{x - 25} {y - 4} C{x - 10} {y - 7} {x + 10} {y - 7} {x + 25} {y - 4}'
-                f' L{x + 22} {y + 3} C{x + 8} {y + 5} {x - 8} {y + 5} {x - 22} {y + 3} Z"/>')
+                f'<path fill="{c["teeth"]}" d="M{x - 25} {y - 4} C{x - 10} {y - 7} {x + 10} {y - 8} {x + 27} {y - 6}'
+                f' L{x + 22} {y + 3} C{x + 8} {y + 5} {x - 8} {y + 5} {x - 22} {y + 3} Z"/>' + _fang(x + 19, y + 1) + _fang(x - 18, y + 2))
     return _svg(body)
 
 
 def layer_front_hair() -> str:
+    """Keskin, sivri perçemler; alında pençe izi amblemli metal plakalı bant (hitai-ate benzeri, özgün amblem)."""
     c = C
     return _svg(f"""
-<path fill="url(#hairg)" d="M352 470 C330 330 400 205 500 200 C600 205 670 330 648 470
-  L632 430 C628 380 612 345 596 330 L604 412 C584 370 566 340 548 326 L548 398 C530 360 512 336 496 326
-  L486 402 C470 366 452 340 440 332 L426 408 C410 376 396 356 384 346 C378 380 372 420 368 470 Z"/>
-<path fill="url(#hairg)" d="M366 420 C340 500 342 590 362 660 C368 620 380 590 392 560 C384 520 380 470 384 430 Z"/>
-<path fill="url(#hairg)" d="M634 420 C660 500 658 590 638 660 C632 620 620 590 608 560 C616 520 620 470 616 430 Z"/>
-<path fill="none" stroke="{c['hair_hi']}" stroke-width="10" stroke-linecap="round" opacity="0.8"
-  d="M410 262 C450 238 550 238 590 262"/>
-<path fill="none" stroke="{c['hair_hi']}" stroke-width="6" stroke-linecap="round" opacity="0.6" d="M560 252 C575 262 588 272 596 284"/>
-<path fill="{c['star']}" d="M612 300 L620 318 L640 320 L625 333 L630 353 L612 342 L594 353 L599 333 L584 320 L604 318 Z"/>
-<circle cx="586" cy="356" r="6" fill="{c['accent']}"/>""")
+<path fill="url(#hairg)" d="M350 480 C326 330 396 205 500 200 C604 205 674 330 650 480
+  L636 410 C632 380 622 360 610 350 L612 430 C596 392 578 366 560 352 L566 418 C548 380 528 356 506 346
+  L500 426 C486 380 464 356 446 348 L452 420 C432 384 414 364 396 354 C386 392 374 440 366 490 Z"/>
+<path fill="url(#hairg)" d="M366 420 C334 510 336 600 352 690 C362 650 372 618 386 590 C380 540 378 480 386 430 Z"/>
+<path fill="url(#hairg)" d="M634 420 C666 510 664 600 648 690 C638 650 628 618 614 590 C620 540 622 480 614 430 Z"/>
+<path fill="url(#hairg)" d="M540 350 C520 400 488 440 452 468 C480 436 498 400 508 356 Z"/>
+<path fill="none" stroke="{c['hair_hi']}" stroke-width="6" stroke-linecap="round" opacity="0.75" d="M420 250 C460 228 540 228 580 250"/>
+<path fill="{c['band']}" d="M352 320 C420 286 580 286 648 320 L652 362 C580 330 420 330 348 362 Z"/>
+<rect x="436" y="300" width="128" height="52" rx="8" fill="url(#plate)" stroke="{c['metal_sh']}" stroke-width="3"/>
+<circle cx="446" cy="312" r="3.5" fill="{c['metal_sh']}"/><circle cx="554" cy="312" r="3.5" fill="{c['metal_sh']}"/>
+<circle cx="446" cy="340" r="3.5" fill="{c['metal_sh']}"/><circle cx="554" cy="340" r="3.5" fill="{c['metal_sh']}"/>
+<path fill="none" stroke="{c['paint']}" stroke-width="6" stroke-linecap="round" d="M474 342 L494 310 M494 344 L514 310 M514 344 L532 312"/>""")
 
 
 # ----------------------------------------------------------------- PNG'ye çevirme

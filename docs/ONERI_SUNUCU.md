@@ -1,7 +1,7 @@
 # Öneri videoları: animasyonlu kadın sunucu (Ayla)
 
 Anime / dizi / film öneri videoları için yeni bir biçim (`format = 'review'`). Videoyu, kodla çizilmiş 2D anime tarzı
-bir kadın sunucu anlatır. Sunucu göz kırpar, nefes alır, başını sallar, ağzı sese göre hareket eder. Sunucunun yanında
+bir kadın sunucu anlatır: ninja kostümlü, kızıl gözlü, yırtıcı bakışlı Ayla (pençe izli alın plakası, kırmızı atkı, omuz zırhı, sırtında kılıç). Sunucu göz kırpar, nefes alır, başını sallar, ağzı sese göre hareket eder. Sunucunun yanında
 her yapımı anlatan hareketli grafikler yer alır: afiş kartı, bilgi kartı, renk paleti animasyonu ve tam ekran afiş.
 
 Bilgisayarınıza hiçbir şey kurulmaz; her şey mevcut stüdyonun bulut hattında (GitHub Actions) çalışır.
@@ -76,7 +76,7 @@ apt ile kurulur.
 
 Karakterin tamamı `presenter.py` içindeki SVG katmanlarıdır: `layer_back_hair`, `layer_body`, `layer_face`,
 `layer_eyes(open|half|closed)`, `layer_brows(neutral|up)`, `layer_mouth(rest|a|b|wide|o|e)` ve `layer_front_hair`.
-Renkler en üstteki `C` sözlüğündedir; saç, göz ve kapüşon rengi tek satırla değişir. Panelde görünen önizleme
+Renkler en üstteki `C` sözlüğündedir; saç, göz, ninja giysisi, atkı ve zırh rengi tek satırla değişir. Panelde görünen önizleme
 `public/sunucu.svg` dosyasıdır. Karakteri değiştirdikten sonra bu dosyayı yeniden üretin:
 
 ```bash
