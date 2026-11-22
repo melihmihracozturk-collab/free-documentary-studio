@@ -39,8 +39,19 @@ def classify(*texts: str | None) -> str:
     return "unknown"
 
 
-def allowed(cls: str, allow_nc: bool = False, allow_sa: bool = True) -> tuple[bool, str]:
-    """(kullanılabilir mi, gerekçe)"""
+# Yayında kullanılmaması gereken sınıflar (taslak modunda önerilir ama işaretlenir)
+RESTRICTED = {"nc", "nd", "unknown", "restricted"}
+
+
+def is_restricted(cls: str | None) -> bool:
+    return (cls or "unknown") in RESTRICTED
+
+
+def allowed(cls: str, allow_nc: bool = False, allow_sa: bool = True, allow_restricted: bool = False) -> tuple[bool, str]:
+    """(kullanılabilir mi, gerekçe). allow_restricted: kullanıcının açtığı TASLAK modu — her lisans önerilir,
+    kısıtlı olanlar işaretlenir ve kullanıcı yayından önce değiştirir."""
+    if allow_restricted and is_restricted(cls):
+        return True, "TASLAK: telifli/izinsiz olabilir — yayından önce değiştirin"
     if cls == "own":
         return True, "kullanıcının kendi yüklemesi (kullanım hakkı beyanı)"
     if cls in ("pd", "cc0", "by"):

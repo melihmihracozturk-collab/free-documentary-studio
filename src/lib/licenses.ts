@@ -1,6 +1,10 @@
 // Görsel lisans sınıflandırması — worker/fds_worker/licenses.py ile AYNI kurallar (iki tarafın testleri aynı örnekleri kullanır).
 // Sınıflar: pd, cc0, by, by-sa, nc, nd, unknown; "own" = kullanıcının kendi yüklediği (hak sahibi beyanı).
-export type LicenseClass = "pd" | "cc0" | "by" | "by-sa" | "nc" | "nd" | "unknown" | "own";
+export type LicenseClass = "pd" | "cc0" | "by" | "by-sa" | "nc" | "nd" | "unknown" | "own" | "restricted";
+
+/** Yayında kullanılmaması gereken sınıflar (taslak modunda önerilir, kırmızı işaretlenir). */
+export const RESTRICTED = new Set(["nc", "nd", "unknown", "restricted"]);
+export const isRestricted = (cls: string | null | undefined) => RESTRICTED.has(cls ?? "unknown");
 
 export function classify(...texts: (string | null | undefined)[]): LicenseClass {
   let t = texts.filter(Boolean).join(" ").toLowerCase().replace(/[_\s]+/g, " ");
@@ -17,7 +21,8 @@ export function classify(...texts: (string | null | undefined)[]): LicenseClass 
   return "unknown";
 }
 
-export function allowed(cls: LicenseClass, allowNc = false, allowSa = true): boolean {
+export function allowed(cls: LicenseClass, allowNc = false, allowSa = true, allowRestricted = false): boolean {
+  if (allowRestricted) return true;                                  // kullanıcının açtığı taslak modu
   if (cls === "pd" || cls === "cc0" || cls === "by" || cls === "own") return true;
   if (cls === "by-sa") return allowSa;
   if (cls === "nc") return allowNc;

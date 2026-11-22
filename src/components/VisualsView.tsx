@@ -1,6 +1,7 @@
 import { Card, Empty, Stat } from "./ui";
 import { VisualPicker } from "./VisualPicker";
 import { getStepState, getVisuals } from "@/lib/queries";
+import { isRestricted } from "@/lib/licenses";
 
 export async function VisualsView({ projectId, slug }: { projectId: string; slug: string }) {
   const [{ scenes, assets }, review] = await Promise.all([getVisuals(projectId), getStepState(projectId, "visual_review")]);
@@ -17,6 +18,12 @@ export async function VisualsView({ projectId, slug }: { projectId: string; slug
         <Stat label="Atıf gerektiren" value={count((a) => ["by", "by-sa", "nc"].includes(a.license_class ?? ""))} hint="credits.txt'de listelenir" />
         <Stat label="Düşük çözünürlük" value={count((a) => (a.width ?? 9999) < 1600)} tone={count((a) => (a.width ?? 9999) < 1600) ? "warn" : "default"} hint="< 1600 px genişlik" />
       </div>
+      {count((a) => isRestricted(a.license_class)) > 0 && (
+        <p role="alert" className="rounded-lg border border-rose-500/50 bg-rose-500/10 p-3 text-sm text-rose-200">
+          ⚠ {count((a) => isRestricted(a.license_class))} sahnede TELİFLİ (izinsiz) görsel var. Taslak için kullanılabilir;
+          YouTube&apos;a yüklemeden önce bu sahnelerde “Görsel ara” ile açık lisanslı bir görsel seçin veya kendi görselinizi yükleyin.
+        </p>
+      )}
       {review?.status === "waiting_input" && (
         <p className="rounded-lg bg-amber-500/10 p-3 text-sm text-amber-200">
           Görseller onayınızı bekliyor. Her sahnede seçili görsele bakın, gerekirse alternatiflerden birini seçin, sonra onaylayın.

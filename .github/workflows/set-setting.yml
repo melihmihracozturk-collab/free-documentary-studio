@@ -1,0 +1,33 @@
+# Bir üretim ayarını değiştirir (panelin Ayarlar sayfasıyla aynı ayarlar).
+name: set-setting
+
+on:
+  workflow_dispatch:
+    inputs:
+      key:
+        description: "Ayar"
+        required: true
+        type: choice
+        options: [license_allow_restricted, license_allow_nc, license_allow_sa, default_minutes]
+      value:
+        description: "Değer (true/false veya sayı)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  set:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/migrate.mjs && node scripts/set-setting.mjs
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          KEY: ${{ inputs.key }}
+          VALUE: ${{ inputs.value }}

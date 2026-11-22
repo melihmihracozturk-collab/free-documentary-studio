@@ -24,7 +24,8 @@ STYLE_VLOG = """NARRATION STYLE (very important):
 - Every FACT (date, number, name, price, opening hour, distance) must come from the claims.
 - PRACTICAL facts ([practical] claims: prices, hours, transport, booking) are welcome: say them plainly and, if the claim
   gives a year, mention it ("iki bin yirmi dört itibarıyla"). Never invent or estimate a price or time.
-- Numbers as words when read aloud. No brackets, no stage directions, no claim ids in narration."""
+- Numbers as words when read aloud. No brackets, no stage directions, no claim ids in narration.
+- Political or contested topics: neutral, attribute opinions to who holds them."""
 
 OPEN_SHARE, TIPS_SHARE, CLOSE_SHARE = 0.07, 0.12, 0.06
 

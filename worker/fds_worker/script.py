@@ -158,7 +158,11 @@ STYLE = """NARRATION STYLE (very important):
 - Atmosphere and emotion are allowed, but every FACT (date, number, name, place, cause, event) must come from the claims.
 - Attribution phrases like "kaynaklara göre", "anlatılana göre", "araştırmalara göre": at most 3 in the whole script,
   only for debated or surprising single-source facts. Never start consecutive sentences with them.
-- Numbers as words when read aloud ("iki yüz elli derece"). No brackets, no stage directions, no claim ids in narration."""
+- Numbers as words when read aloud ("iki yüz elli derece"). No brackets, no stage directions, no claim ids in narration.
+- NEUTRALITY for living people, political parties, governments and contested topics: no praise or condemnation in the
+  narrator's voice ("başarılı", "karanlık", "efsane", "zalim"); report what happened and attribute evaluations to who
+  made them ("destekçilerine göre…", "eleştirmenler … diyor"). Where the claims contain both achievements and
+  criticisms, include both in proportion. Election results and numbers exactly as in the claims."""
 
 
 def _llm_json(conn, prompt: str, task: str, temperature: float = 0.7) -> dict:

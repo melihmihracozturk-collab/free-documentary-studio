@@ -81,9 +81,10 @@ export async function searchCommons(q: string, limit = 24): Promise<Candidate[]>
 type OvResult = { title?: string; foreign_landing_url?: string; url?: string; thumbnail?: string; license?: string; license_version?: string;
   license_url?: string; creator?: string; attribution?: string; width?: number; height?: number };
 
-export async function searchOpenverse(q: string, limit = 12): Promise<Candidate[]> {
-  // commercial + modification: NC ve ND lisanslar sunucu tarafında elenir
-  const p = new URLSearchParams({ q, license_type: "commercial,modification", page_size: String(limit), mature: "false" });
+export async function searchOpenverse(q: string, limit = 12, all = false): Promise<Candidate[]> {
+  // commercial + modification: NC ve ND lisanslar sunucu tarafında elenir (taslak modunda filtre yok)
+  const p = new URLSearchParams({ q, page_size: String(limit), mature: "false" });
+  if (!all) p.set("license_type", "commercial,modification");
   const data = (await getJson(`https://api.openverse.org/v1/images/?${p}`)) as { results?: OvResult[] };
   return (data.results ?? []).filter((r) => r.url && r.foreign_landing_url).map((r) => {
     const lic = `${r.license ?? ""} ${r.license_version ?? ""}`.trim();

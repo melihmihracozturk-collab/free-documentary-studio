@@ -18,4 +18,5 @@ test("politika", () => {
   assert.ok(allowed("by-sa") && !allowed("by-sa", false, false));
   assert.ok(!allowed("nc") && allowed("nc", true));
   assert.ok(!allowed("nd", true) && !allowed("unknown", true));
+  assert.ok(allowed("nd", false, true, true) && allowed("unknown", false, true, true));   // taslak modu
 });

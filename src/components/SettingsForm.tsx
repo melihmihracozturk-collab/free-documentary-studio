@@ -4,8 +4,8 @@ import { useActionState } from "react";
 import { saveSettings, type FormState } from "@/app/actions";
 import { btnPrimary, input } from "./ui";
 
-export function SettingsForm({ guardGb, allowNc, allowSa, defaultMinutes }: {
-  guardGb: number; allowNc: boolean; allowSa: boolean; defaultMinutes: number;
+export function SettingsForm({ guardGb, allowNc, allowSa, allowRestricted, defaultMinutes }: {
+  guardGb: number; allowNc: boolean; allowSa: boolean; allowRestricted: boolean; defaultMinutes: number;
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveSettings, undefined);
   return (
@@ -33,6 +33,15 @@ export function SettingsForm({ guardGb, allowNc, allowSa, defaultMinutes }: {
           <input type="checkbox" name="license_allow_sa" defaultChecked={allowSa} className="mt-0.5 accent-amber-500" />
           <span><span className="text-zinc-200">CC BY-SA lisanslara izin ver</span>
             <span className="block text-xs text-zinc-500">Kullanılabilir; atıf zorunlu ve görsel üzerinde yapılan değişiklikler aynı lisansla paylaşılır.</span></span>
+        </label>
+        <label className="flex items-start gap-3 rounded-md border border-rose-500/30 bg-rose-500/5 p-2 text-sm">
+          <input type="checkbox" name="license_allow_restricted" defaultChecked={allowRestricted} className="mt-0.5 accent-rose-500" />
+          <span><span className="text-zinc-200">Telifli görselleri de öner (taslak modu)</span>
+            <span className="block text-xs text-zinc-500">
+              Lisansa bakmadan en ilgili görseller seçilir; araştırmadaki haber/kurum sayfalarının görselleri de havuza girer.
+              Telifli olanlar kırmızı “TELİFLİ” etiketiyle işaretlenir. Yayından önce bunları değiştirmek sizin sorumluluğunuzdadır
+              (aksi hâlde YouTube telif bildirimi gelebilir).
+            </span></span>
         </label>
       </fieldset>
       {state?.error && <p role="alert" className="text-sm text-rose-300">{state.error}</p>}
