@@ -91,6 +91,7 @@ def _relevant(src: S.Source, keywords: list[str]) -> bool:
 # proje dilindeki Vikipedi) girsin. İttihat ve Terakki'de 30k sınırla yalnızca 3 madde girebilmişti.
 TYPE_CAP = {"encyclopedia": 12000, "academic": 4000, "archive": 3000, "guide": 10000, "news": 5000, "official": 6000}
 TOTAL_BUDGET = 170000
+MAIN_ARTICLE_CAP = 30000
 TYPE_BUDGET = {"encyclopedia": 85000, "academic": 40000, "archive": 15000, "guide": 36000,
                "news": 45000, "official": 24000}   # news/official: Vikipedi kaynakçası + GDELT (güncel konular)  # guide: Wikivoyage (vlog)
 # Vlog: her durağın rehberi (pratik bilgi) girsin; akademik kaynak ikinci planda
@@ -173,12 +174,27 @@ def select_sources(found: list[S.Source], keywords: list[str], dropped: list | N
             drop.append((s.collector, s.title, "ilgisiz" if not is_media_work(s) else "eser"))
             continue
         seen |= keys
+        s.extra["_full"] = s.text
         s.text = spread_sample(s.text, TYPE_CAP.get(s.source_type, 4000))
         unique.append(s)
     unique = _interleave(unique)
     # Ansiklopedi bütçesi önce konuyla en yoğun ilgili maddelere gider (Talaat Pasha > yan örgüt maddesi)
     score = {id(s): relevance_score(s, keywords) for s in unique}
     unique.sort(key=lambda s: -score[id(s)] if s.source_type in ("encyclopedia", "guide") else 0)
+    # Konunun ANA maddesi (dil başına en ilgili ansiklopedi maddesi) daha geniş örneklenir: uzun konularda
+    # (ör. bir partinin 20 yılı) 12k karakter kapatma davası, Gezi, 15 Temmuz gibi dönüm noktalarını kaçırıyordu.
+    # Ana madde = konu kelimelerini TOPLAMDA en çok anan (yoğunluk değil: kısa yan maddeler yoğunlukta öne geçer).
+    keys = [_norm(k) for k in keywords if len(_norm(k)) >= 3]
+
+    def mentions(src) -> int:
+        body = " " + _norm(src.extra.get("_full", src.text)) + " "
+        return sum(body.count(" " + k) for k in keys)
+    best: dict[str, S.Source] = {}
+    for s in unique:
+        if s.source_type == "encyclopedia" and (s.lang not in best or mentions(s) > mentions(best[s.lang])):
+            best[s.lang] = s
+    for s in best.values():
+        s.text = spread_sample(s.extra.get("_full", s.text), MAIN_ARTICLE_CAP)
     # Tür başına bütçe: uzun ansiklopedi maddeleri akademik kaynakları dışarıda bırakamaz (1453'te 22 → 4 kaynak olmuştu)
     budget = budget or TYPE_BUDGET
     used = {t: 0 for t in budget}
