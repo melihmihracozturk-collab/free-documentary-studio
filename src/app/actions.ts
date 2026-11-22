@@ -86,6 +86,7 @@ const SettingsForm = z.object({
   storage_guard_gb: z.coerce.number().min(0.5).max(10),
   license_allow_nc: z.enum(["on"]).optional(),
   license_allow_sa: z.enum(["on"]).optional(),
+  license_allow_restricted: z.enum(["on"]).optional(),
   default_minutes: z.coerce.number().min(8).max(15),
 });
 
@@ -98,6 +99,7 @@ export async function saveSettings(_prev: FormState, form: FormData): Promise<Fo
     ["storage_guard_bytes", Math.round(s.storage_guard_gb * 1024 ** 3)],
     ["license_allow_nc", s.license_allow_nc === "on"],
     ["license_allow_sa", s.license_allow_sa === "on"],
+    ["license_allow_restricted", s.license_allow_restricted === "on"],
     ["default_minutes", s.default_minutes],
   ];
   for (const [key, value] of rows) {
@@ -235,10 +237,13 @@ export async function addSceneImage(slug: string, sceneId: string, input: unknow
     select s.status from job_steps s join jobs j on j.id = s.job_id
      where s.project_id = ${p.id} and s.step_key = 'visual_review' order by j.created_at desc limit 1`;
   if (st && st.status === "done") return { error: "Görseller onaylandı; değiştirmek için onayı geri alın" };
-  const rows = await sql<{ key: string; value: unknown }[]>`select key, value from settings where key in ('license_allow_nc','license_allow_sa')`;
+  const rows = await sql<{ key: string; value: unknown }[]>`
+    select key, value from settings where key in ('license_allow_nc','license_allow_sa','license_allow_restricted')`;
   const s = Object.fromEntries(rows.map((r) => [r.key, r.value]));
   const cls = classify(c.license_raw, c.license_url);
-  if (!allowed(cls, s.license_allow_nc === true, s.license_allow_sa !== false)) return { error: `Lisans uygun değil (${cls})` };
+  if (!allowed(cls, s.license_allow_nc === true, s.license_allow_sa !== false, s.license_allow_restricted === true)) {
+    return { error: `Lisans uygun değil (${cls})` };
+  }
   await sql.begin(async (tx) => {
     const [a] = await tx<{ id: string }[]>`
       insert into assets (project_id, scene_id, kind, source, title, source_url, file_url, thumb_url, author, license, license_url,

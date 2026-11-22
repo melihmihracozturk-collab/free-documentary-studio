@@ -290,3 +290,40 @@ def test_user_upload_is_normalized_and_raw_deleted(conn, s3):  # noqa: F811
     assert "kullanıcı yüklemesi" in VZ.credits_text([{**a, "scene_kind": "doc", "scene_idx": 1}])
     from fds_worker.licenses import allowed, needs_attribution
     assert allowed("own")[0] and not needs_attribution("own")
+
+
+def test_draft_mode_offers_restricted_and_marks_them(conn, monkeypatch):
+    from fds_worker.licenses import allowed, is_restricted
+    assert not allowed("nd")[0] and allowed("nd", allow_restricted=True)[0]
+    assert is_restricted("restricted") and not is_restricted("by-sa")
+    pid, job = _setup(conn)
+    press = cand("Vesuvius eruption painting press photo", "web", "restricted", 2400, 1600)
+    fake_archives(monkeypatch, [cand("Unrelated vase", "met", "cc0")])
+    monkeypatch.setattr(images, "web_pool", lambda urls, limit=30: [press])
+    VZ.plan(conn, steps(conn, job)["visual_plan"])
+    res = VZ.match(conn, steps(conn, job)["asset_match"]).output
+    assert "web_candidates" not in res and res["restricted_chosen"] == 0            # varsayılan: kapalı
+    conn.execute("insert into settings (key, value) values ('license_allow_restricted', 'true') "
+                 "on conflict (key) do update set value = excluded.value")
+    res = VZ.match(conn, steps(conn, job)["asset_match"]).output
+    assert res["web_candidates"] == 1 and res["restricted_chosen"] >= 1                # ilgili telifli görsel seçildi
+    rows = conn.execute("select a.*, s.kind scene_kind, s.idx scene_idx from scenes s join assets a on a.id=s.asset_id "
+                        "where s.project_id=%s order by s.kind, s.idx", (pid,)).fetchall()
+    assert "YAYINDAN ÖNCE DEĞİŞTİRİN" in VZ.credits_text(rows)
+
+
+def test_og_image_extraction(monkeypatch):
+    from fds_worker import web
+
+    class R:
+        status_code = 200
+        url = "https://news.example/tr/haber/1"
+        text = ('<html><head><meta property="og:image" content="/img/kongre.jpg">'
+                '<meta property="og:title" content="Parti kongresi yapıldı">'
+                '<meta property="og:description" content="Kongrede yeni yönetim seçildi."></head>'
+                '<body><p>' + "Kongre İstanbul'da toplandı ve yeni yönetim seçildi. " * 3 + '</p></body></html>')
+    monkeypatch.setattr(web, "allowed", lambda url: True)
+    monkeypatch.setattr(http, "request", lambda *a, **k: R())
+    m = web.og_image("https://news.example/tr/haber/1")
+    assert m["image"] == "https://news.example/img/kongre.jpg" and m["title"] == "Parti kongresi yapıldı"
+    assert "yeni yönetim" in m["description"]

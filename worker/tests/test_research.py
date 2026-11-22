@@ -445,3 +445,12 @@ def test_extend_rejects_insert_without_new_claims():
     assert [x["voiceover"] for x in out] == ["Bir sahne metni burada yer alıyor.", "İkinci sahne metni burada.",
                                             "Yepyeni bir bilgi anlatılıyor."]
     assert len(rej) == 2
+
+
+def test_main_article_gets_wider_sample():
+    long_text = "\n".join(f"AK Parti {1990 + i} yılında şunları yaptı. " * 12 for i in range(60))
+    main = S.Source("m", "Adalet ve Kalkınma Partisi", "Wikipedia", "encyclopedia", "wikipedia", long_text, lang="tr")
+    side = S.Source("s", "AK Parti Gençlik Kolları", "Wikipedia", "encyclopedia", "wikipedia", "AK Parti gençlik. " * 400, lang="tr")
+    kept = {k.title: k for k in research.select_sources([main, side], ["AK Parti"])}
+    assert len(kept["Adalet ve Kalkınma Partisi"].text) > research.TYPE_CAP["encyclopedia"]
+    assert len(kept["AK Parti Gençlik Kolları"].text) <= research.TYPE_CAP["encyclopedia"]

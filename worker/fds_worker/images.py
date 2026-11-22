@@ -114,6 +114,26 @@ def _commons_page(p: dict, query: str) -> ImageCandidate | None:
         description=_strip(md.get("ImageDescription"))[:500], query=query)
 
 
+# ----------------------------------------------------------------- Haber/kurum sayfalarının görselleri (TASLAK modu)
+def web_pool(urls: list[tuple[str, str]], limit: int = 30) -> list[ImageCandidate]:
+    """Araştırmada okunan haber/resmî sayfaların paylaşım görselleri. Telifli kabul edilir (sınıf 'restricted');
+    yalnızca kullanıcı taslak modunu açtıysa önerilir ve yayından önce değiştirilmek üzere işaretlenir."""
+    from . import web
+    out, seen = [], set()
+    for url, publisher in urls[:limit]:
+        m = web.og_image(url)
+        if not m or m["image"] in seen:
+            continue
+        seen.add(m["image"])
+        title = (m["title"] or "")[:300]
+        out.append(ImageCandidate(
+            source="web", title=title, page_url=m["page"], file_url=m["image"], thumb_url=m["image"],
+            license_raw=f"Telifli olabilir — {m['domain']}", license_class="restricted", author=publisher or m["domain"],
+            attribution=f"{title} — {m['domain']} (telifli, yayından önce değiştirin)",
+            description=(m["description"] or "")[:500], query="web"))
+    return out
+
+
 # ----------------------------------------------------------------- Met Museum Open Access (CC0)
 def met(query: str, limit: int = 5) -> list[ImageCandidate]:
     ids = (http.get_json("https://collectionapi.metmuseum.org/public/collection/v1.1/search",
@@ -141,10 +161,12 @@ def met(query: str, limit: int = 5) -> list[ImageCandidate]:
 
 
 # ----------------------------------------------------------------- Openverse (yedek)
-def openverse(query: str, limit: int = 6) -> list[ImageCandidate]:
-    # commercial + modification: NC ve ND lisanslar sunucu tarafında elenir
-    res = http.get_json("https://api.openverse.org/v1/images/", params={
-        "q": query, "license_type": "commercial,modification", "page_size": limit, "mature": "false"}).get("results", [])
+def openverse(query: str, limit: int = 6, restricted: bool = False) -> list[ImageCandidate]:
+    # commercial + modification: NC ve ND lisanslar sunucu tarafında elenir (taslak modunda filtre yok)
+    params = {"q": query, "page_size": limit, "mature": "false"}
+    if not restricted:
+        params["license_type"] = "commercial,modification"
+    res = http.get_json("https://api.openverse.org/v1/images/", params=params).get("results", [])
     out = []
     for r in res:
         lic = f"{r.get('license', '')} {r.get('license_version', '')}".strip()

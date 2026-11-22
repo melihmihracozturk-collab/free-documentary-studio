@@ -57,7 +57,7 @@ Düzenler kodla atanır: giriş ve kapanış `host`, her yapımın ilk sahnesi `
 
 ## Kurulum (yalnızca yeni olanlar)
 
-1. **Şema:** Actions → *migrate* → *Run workflow* (`0013_review.sql` uygulanır).
+1. **Şema:** Actions → *migrate* → *Run workflow* (`0013_license_draft.sql` ve `0014_review.sql` uygulanır).
 2. **İsteğe bağlı, TMDB anahtarı:** themoviedb.org'da ücretsiz hesap açın → Settings → API → anahtar
    (v3 "API Key" ya da v4 "Read Access Token") → GitHub Secrets'a `TMDB_API_KEY` olarak ekleyin. Anahtar yoksa anime
    için AniList, film/dizi için Vikipedi kullanılır.

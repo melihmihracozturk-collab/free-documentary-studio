@@ -29,7 +29,8 @@ def assign(conn, slug: str, kind: str, idx: int, file_title: str, force: bool = 
     if not c:
         raise SystemExit(f"Commons dosyası bulunamadı: {file_title}")
     s = visuals._settings(conn)
-    ok, why = allowed(c.license_class, s.get("license_allow_nc") is True, s.get("license_allow_sa") is not False)
+    ok, why = allowed(c.license_class, s.get("license_allow_nc") is True, s.get("license_allow_sa") is not False,
+                      s.get("license_allow_restricted") is True)
     if not ok:
         raise SystemExit(f"Lisans uygun değil ({c.license_class}): {why}")
     conn.execute("update assets set status='candidate' where scene_id=%s and status='approved'", (sc["id"],))

@@ -114,6 +114,32 @@ def fetch_page(url: str, lang: str | None = None) -> Source | None:
                   text=text, lang=lang or "", published=published, extra={"domain": d})
 
 
+def og_image(url: str) -> dict | None:
+    """Sayfanın paylaşım görseli (og:image / twitter:image), başlığı ve açıklaması. robots.txt'ye uyar."""
+    if skipped(url) or not allowed(url):
+        return None
+    try:
+        r = http.request("GET", url, retries=1, timeout=20)
+    except Exception:  # noqa: BLE001
+        return None
+    if r.status_code >= 400:
+        return None
+    img = _meta(r.text, "og:image", "og:image:url", "twitter:image", "twitter:image:src")
+    if not img:
+        return None
+    img = H.unescape(img)
+    if img.startswith("//"):
+        img = "https:" + img
+    elif img.startswith("/"):
+        p = urlparse(str(r.url))
+        img = f"{p.scheme}://{p.netloc}{img}"
+    if not img.startswith("http") or re.search(r"(logo|placeholder|default|favicon)", img, re.I):
+        return None
+    _, title, published = extract(r.text)
+    return {"image": img, "title": title or domain(url), "description": _meta(r.text, "og:description", "description") or "",
+            "page": str(r.url), "domain": domain(str(r.url)), "published": published}
+
+
 def wiki_ref_urls(title: str, lang: str = "en", limit: int = 40) -> list[str]:
     """Vikipedi maddesinin dış bağlantıları (dipnot kaynakları), alan adı başına en fazla 2."""
     data = http.get_json(f"https://{lang}.wikipedia.org/w/api.php", params={

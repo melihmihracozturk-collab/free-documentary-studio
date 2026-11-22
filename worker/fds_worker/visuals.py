@@ -15,13 +15,14 @@ from psycopg.types.json import Jsonb
 
 from . import http, images, storage
 from .handlers import StepResult
-from .licenses import allowed, needs_attribution
+from .licenses import allowed, is_restricted, needs_attribution
 
 MAX_CANDIDATES = 6
 MAX_DOWNLOAD_BYTES = 40 * 1024 * 1024
 LONG_SIDE = 2560
-SOURCE_PREF = {"met": 1.0, "smithsonian": 1.0, "commons": 0.8, "openverse": 0.4}
-LICENSE_PREF = {"cc0": 1.0, "pd": 1.0, "by": 0.7, "by-sa": 0.5, "nc": 0.2}
+SOURCE_PREF = {"met": 1.0, "smithsonian": 1.0, "commons": 0.8, "openverse": 0.4, "web": 0.9}
+LICENSE_PREF = {"cc0": 1.0, "pd": 1.0, "by": 0.7, "by-sa": 0.5, "nc": 0.2, "own": 1.0,
+                "restricted": 0.5, "nd": 0.2, "unknown": 0.2}   # taslak modunda ilgi önde gelir
 
 
 def _norm(s: str) -> str:
@@ -108,14 +109,15 @@ def score(c: images.ImageCandidate, scene: dict, core: list[str], kind: str) -> 
 SEARCHERS = {"met": images.met, "commons": images.commons, "smithsonian": images.smithsonian}
 
 
-def search_all(queries: list[str], cache: dict, errors: list[str], with_openverse: bool) -> list[images.ImageCandidate]:
+def search_all(queries: list[str], cache: dict, errors: list[str], with_openverse: bool,
+               restricted: bool = False) -> list[images.ImageCandidate]:
     found: list[images.ImageCandidate] = []
     for q in queries:
         names = list(SEARCHERS) + (["openverse"] if with_openverse else [])
         for name in names:
             key = (name, q)
             if key not in cache:
-                fn = SEARCHERS.get(name) or images.openverse
+                fn = SEARCHERS.get(name) or (lambda q: images.openverse(q, restricted=restricted))
                 try:
                     cache[key] = fn(q)
                 except Exception as e:  # noqa: BLE001 — bir arşiv çökerse diğerleri sürer
@@ -133,6 +135,7 @@ def match(conn, step) -> StepResult:
         return match_review(conn, step)
     st = _settings(conn)
     allow_nc, allow_sa = st.get("license_allow_nc") is True, st.get("license_allow_sa") is not False
+    draft = st.get("license_allow_restricted") is True          # kullanıcının açtığı taslak modu: telifli de önerilir
     core = _core_keywords(conn, pid)
     cache: dict = {}
     errors: list[str] = []
@@ -140,15 +143,24 @@ def match(conn, step) -> StepResult:
     conn.execute("update scenes set asset_id=null where project_id=%s", (pid,))
     conn.execute("delete from assets where project_id=%s and scene_id is not null", (pid,))
 
+    web_cands: list[images.ImageCandidate] = []
+    if draft:
+        srcs = conn.execute("select url, publisher from sources where project_id=%s and collector='web' order by ref",
+                            (pid,)).fetchall()
+        try:
+            web_cands = images.web_pool([(r["url"], r["publisher"]) for r in srcs])
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"web görselleri: {type(e).__name__}")
+        stats["web_candidates"] = len(web_cands)
     for kind in ("doc", "shorts"):
         used: set[str] = set()
         scenes = conn.execute("select * from scenes where project_id=%s and kind=%s order by idx", (pid, kind)).fetchall()
         for sc in scenes:
             stats["scenes"] += 1
             qs = sc["visual_queries"] or queries_for(sc, core)
-            cands = search_all(qs, cache, errors, with_openverse=False)
-            ok = [c for c in cands if allowed(c.license_class, allow_nc, allow_sa)[0] and c.file_url]
-            if len(ok) < 3:                                       # yetersizse yedek arşiv
+            cands = search_all(qs, cache, errors, with_openverse=draft, restricted=draft) + web_cands
+            ok = [c for c in cands if allowed(c.license_class, allow_nc, allow_sa, draft)[0] and c.file_url]
+            if len(ok) < 3 and not draft:                         # yetersizse yedek arşiv
                 cands += search_all(qs[:2], cache, errors, with_openverse=True)
                 ok = [c for c in cands if allowed(c.license_class, allow_nc, allow_sa)[0] and c.file_url]
             stats["rejected_license"] += len(cands) - len(ok)
@@ -184,6 +196,9 @@ def match(conn, step) -> StepResult:
             else:
                 stats["missing"].append(f"{kind}#{sc['idx']}")
 
+    stats["restricted_chosen"] = conn.execute(
+        "select count(*) n from scenes s join assets a on a.id = s.asset_id where s.project_id=%s "
+        "and coalesce(a.license_class,'unknown') in ('nc','nd','unknown','restricted')", (pid,)).fetchone()["n"]
     downloaded = download_selected(conn, pid, p["slug"]) if storage.configured() else 0
     write_credits(conn, pid, p["slug"])
     for e in errors[:20]:
@@ -279,7 +294,8 @@ def credits_text(rows) -> str:
         lines.append(f"[{'Belgesel' if r['scene_kind'] == 'doc' else 'Shorts'} sahne {r['scene_idx']}] {r['title']}")
         lines.append(f"  Yapan: {r['author'] or 'bilinmiyor'} · Lisans: {lic}"
                      + (f" ({r['license_url']})" if r["license_url"] else "")
-                     + (" · ATIF ZORUNLU" if needs_attribution(r["license_class"]) else ""))
+                     + (" · ATIF ZORUNLU" if needs_attribution(r["license_class"]) else "")
+                     + (" · ⚠ TELİFLİ/İZİNSİZ — YAYINDAN ÖNCE DEĞİŞTİRİN" if is_restricted(r["license_class"]) else ""))
         lines.append(f"  Kaynak: {r['source_url'] or 'kullanıcı yüklemesi (kullanım hakkı kullanıcı beyanıyla)'}")
     return "\n".join(lines) + "\n"
 

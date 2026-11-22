@@ -15,8 +15,11 @@ const LIC: Record<string, { label: string; cls: string }> = {
   "by-sa": { label: "CC BY-SA · atıf", cls: "bg-amber-500/15 text-amber-300" },
   nc: { label: "NC · ticari değil", cls: "bg-rose-500/15 text-rose-300" },
   own: { label: "Sizin yüklemeniz", cls: "bg-violet-500/15 text-violet-300" },
+  nd: { label: "TELİFLİ · ND", cls: "bg-rose-600 text-white" },
+  unknown: { label: "TELİFLİ · lisans belirsiz", cls: "bg-rose-600 text-white" },
+  restricted: { label: "TELİFLİ", cls: "bg-rose-600 text-white" },
 };
-const SRC: Record<string, string> = { met: "Met Museum", commons: "Wikimedia Commons", openverse: "Openverse", smithsonian: "Smithsonian", upload: "Kullanıcı yüklemesi" };
+const SRC: Record<string, string> = { met: "Met Museum", commons: "Wikimedia Commons", openverse: "Openverse", smithsonian: "Smithsonian", upload: "Kullanıcı yüklemesi", web: "Haber/kurum sitesi" };
 
 /** Önizleme: Commons yalnızca standart genişlikleri verir (500, 960, 1280, 1920, 3840…) ve orijinal dosyaya doğrudan
  *  erişimi kota sınırına takar; her iki adres biçiminden de 500px küçük resim üretilir. */

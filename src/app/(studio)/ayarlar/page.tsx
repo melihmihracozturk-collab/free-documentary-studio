@@ -23,6 +23,7 @@ export default async function SettingsPage() {
         <Card title="Üretim kuralları">
           <SettingsForm guardGb={Number(s.storage_guard_bytes ?? 0) / 1024 ** 3}
                         allowNc={s.license_allow_nc === true} allowSa={s.license_allow_sa !== false}
+                        allowRestricted={s.license_allow_restricted === true}
                         defaultMinutes={Number(s.default_minutes ?? 11)} />
         </Card>
         <Card title="Servis bağlantıları">

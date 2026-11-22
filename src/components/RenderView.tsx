@@ -1,6 +1,7 @@
 import { Download } from "lucide-react";
 import { Card, Empty, Stat } from "./ui";
 import { getRenders, getStepState } from "@/lib/queries";
+import { db } from "@/lib/db";
 import { formatBytes, formatDate } from "@/lib/format";
 
 function fmt(sec: number) {
@@ -13,6 +14,16 @@ export async function RenderView({ projectId, slug, kind }: { projectId: string;
   const [renders, step, subs] = await Promise.all([
     getRenders(projectId), getStepState(projectId, kind === "doc" ? "render_doc" : "render_shorts"), getStepState(projectId, "subtitles")]);
   const r = renders.find((x) => x.kind === kind);
+  const [{ n: restricted }] = await db()<{ n: number }[]>`
+    select count(*)::int n from scenes s join assets a on a.id = s.asset_id
+     where s.project_id = ${projectId} and s.kind = ${kind}
+       and coalesce(a.license_class, 'unknown') in ('nc', 'nd', 'unknown', 'restricted')`;
+  const warn = restricted > 0 && (
+    <p role="alert" className="mb-3 rounded-lg border border-rose-500/50 bg-rose-500/10 p-3 text-sm text-rose-200">
+      ⚠ Bu videoda {restricted} TELİFLİ görsel var (taslak). Yayınlamadan önce Görseller sayfasında değiştirip yeniden render alın;
+      aksi hâlde YouTube telif bildirimi gelebilir.
+    </p>
+  );
   if (!r) {
     return (
       <Card title={kind === "doc" ? "Ana belgesel" : "Shorts"}>
@@ -26,6 +37,7 @@ export async function RenderView({ projectId, slug, kind }: { projectId: string;
   const vertical = kind === "shorts";
   return (
     <>
+      {warn}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Süre" value={fmt(Number(r.duration_sec))} />
         <Stat label="Çözünürlük" value={`${r.width}×${r.height}`} hint={`${Number(r.fps)} fps · H.264`} />

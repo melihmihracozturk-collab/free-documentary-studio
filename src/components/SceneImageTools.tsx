@@ -8,7 +8,8 @@ import type { Candidate } from "@/lib/imageSearch";
 import { btnGhost, btnPrimary, input } from "./ui";
 
 const LIC: Record<string, string> = {
-  pd: "Kamu malı", cc0: "CC0", by: "CC BY · atıf", "by-sa": "CC BY-SA · atıf", nc: "NC · ticari değil",
+  pd: "Kamu malı", cc0: "CC0", by: "CC BY · atıf", "by-sa": "CC BY-SA · atıf", nc: "TELİFLİ · NC",
+  nd: "TELİFLİ · ND", unknown: "TELİFLİ · belirsiz", restricted: "TELİFLİ",
 };
 
 /** Yanıtı güvenle okur: boş/HTML gövde (ör. sunucu hatası) "Unexpected end of JSON" yerine anlaşılır hata verir. */
