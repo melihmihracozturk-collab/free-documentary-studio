@@ -300,6 +300,8 @@ def test_draft_mode_offers_restricted_and_marks_them(conn, monkeypatch):
     press = cand("Vesuvius eruption painting press photo", "web", "restricted", 2400, 1600)
     fake_archives(monkeypatch, [cand("Unrelated vase", "met", "cc0")])
     monkeypatch.setattr(images, "web_pool", lambda urls, limit=30: [press])
+    from fds_worker import web
+    monkeypatch.setattr(web, "gdelt_urls", lambda q, limit=40: ["https://news.example/1"])
     VZ.plan(conn, steps(conn, job)["visual_plan"])
     res = VZ.match(conn, steps(conn, job)["asset_match"]).output
     assert "web_candidates" not in res and res["restricted_chosen"] == 0            # varsayılan: kapalı

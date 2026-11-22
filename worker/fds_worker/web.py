@@ -171,6 +171,24 @@ def wiki_refs(title: str, lang: str = "en", limit: int = 12) -> list[Source]:
     return out
 
 
+def gdelt_urls(query: str, limit: int = 40) -> list[str]:
+    """GDELT'te konuyla ilgili haber adresleri (alan adı başına bir tane)."""
+    q = f'"{query}" (sourcelang:turkish OR sourcelang:english)'
+    r = http.request("GET", "https://api.gdeltproject.org/api/v2/doc/doc",
+                     params={"query": q, "mode": "artlist", "maxrecords": 75, "format": "json", "sort": "hybridrel"})
+    try:
+        arts = json.loads(r.text or "{}").get("articles", [])
+    except ValueError:
+        return []
+    out, seen = [], set()
+    for a in arts:
+        u = a.get("url", "")
+        if u and domain(u) not in seen and not skipped(u):
+            seen.add(domain(u))
+            out.append(u)
+    return out[:limit]
+
+
 def gdelt(query: str, limit: int = 8) -> list[Source]:
     """GDELT DOC 2.0 (son ~3 ay haberleri; ücretsiz, anahtarsız). Türkçe ve İngilizce haberler."""
     q = f'"{query}" (sourcelang:turkish OR sourcelang:english)'

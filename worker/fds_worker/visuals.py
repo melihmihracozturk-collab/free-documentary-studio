@@ -98,12 +98,14 @@ def relevance(c: images.ImageCandidate, scene: dict, core: list[str]) -> tuple[f
     return rel, topic
 
 
-def score(c: images.ImageCandidate, scene: dict, core: list[str], kind: str) -> float:
+def score(c: images.ImageCandidate, scene: dict, core: list[str], kind: str, draft: bool = False) -> float:
     rel, topic = relevance(c, scene, core)
     w, h = c.width or 0, c.height or 0
     need = 1920 if kind == "doc" else 1080                         # Shorts dikey: kısa kenar ≥ 1080 yeterli
     res = 0.6 if not w else min(1.0, (min(w, h) if kind == "shorts" else w) / need)
-    return round(3 * rel + 1.5 * topic + 1.5 * res + SOURCE_PREF.get(c.source, 0.3) + LICENSE_PREF.get(c.license_class, 0), 3)
+    # Taslak modunda lisans puanı yok: yalnızca ilgi ve çözünürlük (kullanıcı telifli olanları sonra değiştirir)
+    lic = 0 if draft else SOURCE_PREF.get(c.source, 0.3) + LICENSE_PREF.get(c.license_class, 0)
+    return round(3 * rel + 1.5 * topic + 1.5 * res + lic, 3)
 
 
 SEARCHERS = {"met": images.met, "commons": images.commons, "smithsonian": images.smithsonian}
@@ -147,8 +149,14 @@ def match(conn, step) -> StepResult:
     if draft:
         srcs = conn.execute("select url, publisher from sources where project_id=%s and collector='web' order by ref",
                             (pid,)).fetchall()
+        pages = [(r["url"], r["publisher"]) for r in srcs]
+        try:                                    # konuyla ilgili haberlerden daha fazla görsel (GDELT)
+            from . import web
+            pages += [(u, web.domain(u)) for u in web.gdelt_urls(core[0] if core else p["slug"].replace("-", " "))]
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"GDELT: {type(e).__name__}")
         try:
-            web_cands = images.web_pool([(r["url"], r["publisher"]) for r in srcs])
+            web_cands = images.web_pool(pages, limit=60)
         except Exception as e:  # noqa: BLE001
             errors.append(f"web görselleri: {type(e).__name__}")
         stats["web_candidates"] = len(web_cands)
@@ -167,7 +175,7 @@ def match(conn, step) -> StepResult:
             uniq: dict[str, images.ImageCandidate] = {}
             for c in ok:
                 uniq.setdefault(c.file_url, c)
-            ranked = sorted(uniq.values(), key=lambda c: score(c, sc, core, kind), reverse=True)
+            ranked = sorted(uniq.values(), key=lambda c: score(c, sc, core, kind, draft), reverse=True)
             fits = [c for c in ranked if any(relevance(c, sc, core))]      # sahneyle ya da konuyla en az bir bağ
             chosen = next((c for c in fits if c.file_url not in used), None)
             if chosen is None and (fits or ranked):
