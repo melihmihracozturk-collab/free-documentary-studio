@@ -492,7 +492,7 @@ ALL CLAIMS:
 The {film_word(p)} script in {lang} about {p['topic']} is too short: {total} words, target {budget}.
 INSERT about {n_new} NEW scenes of {SCENE_WORDS}-{SCENE_WORDS + 15} words each where they fit the story best.
 Use ONLY the UNUSED CLAIMS (new facts). A scene that repeats a fact already told will be rejected. Do not change existing scenes.
-Place each new scene where it fits {"in the chapter (stop / title) the fact belongs to" if (p.get("format") or "") in ("vlog", "review") else "CHRONOLOGICALLY"}.
+Place each new scene where it fits {"in the chapter (stop) the fact belongs to" if (p.get("format") or "") == "vlog" else "in the chapter (title) the fact belongs to" if (p.get("format") or "") == "review" else "CHRONOLOGICALLY"}.
 Every fact and number must come from the claims.
 {extra_rules}
 
