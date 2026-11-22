@@ -18,7 +18,7 @@ on:
         required: false
         default: keep
         type: choice
-        options: [keep, documentary, vlog]
+        options: [keep, documentary, vlog, review]
 
 permissions:
   contents: read

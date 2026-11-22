@@ -18,7 +18,7 @@ const NewProject = z.object({
   language: z.enum(["tr", "en"]),
   target_minutes: z.coerce.number().min(8, "En az 8 dakika").max(15, "En fazla 15 dakika"),
   style: z.string().trim().min(2).max(120),
-  format: z.enum(["documentary", "vlog"]).default("documentary"),
+  format: z.enum(["documentary", "vlog", "review"]).default("documentary"),
 });
 
 export async function createProject(_prev: FormState, form: FormData): Promise<FormState> {
@@ -27,7 +27,8 @@ export async function createProject(_prev: FormState, form: FormData): Promise<F
   const { topic, language, target_minutes, style, format } = parsed.data;
 
   const sql = db();
-  const base = slugify(topic);
+  // Öneri (Ayla) projeleri "oneri-" ön ekiyle ayrılır: panel adresleri ve R2 klasörleri (projects/oneri-…) karışmaz
+  const base = format === "review" ? `oneri-${slugify(topic, 41)}` : slugify(topic);
   let slug = base;
   for (let i = 2; ; i++) {
     const [exists] = await sql`select 1 from projects where slug = ${slug}`;

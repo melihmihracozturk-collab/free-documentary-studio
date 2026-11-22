@@ -266,6 +266,9 @@ def script_doc(conn, step) -> StepResult:
     if (p.get("format") or "documentary") == "vlog":
         from .vlog import script_vlog            # döngüsel içe aktarmayı önler
         return script_vlog(conn, step, p)
+    if (p.get("format") or "documentary") == "review":
+        from .review import script_review
+        return script_review(conn, step, p)
     wpm = _setting(conn, "narration_wpm", 125)
     budget = int(float(p["target_minutes"]) * wpm)
     claims, status = _claims_block(conn, p["id"])
@@ -425,6 +428,10 @@ def apply_edits(scenes: list[dict], edits: dict, claims: str = "", guard: bool =
     return result, rejected
 
 
+def film_word(p) -> str:
+    return {"vlog": "travel vlog", "review": "recommendation video (anime / series / film)"}.get(p.get("format") or "", "documentary")
+
+
 def _listing(scenes):
     return "\n".join(f"{i}. [{sc.get('_act')}] ({', '.join(sc.get('claim_refs') or [])}) {sc.get('voiceover')}"
                      for i, sc in enumerate(scenes, 1))
@@ -442,7 +449,7 @@ def _edit(conn, p, kind: str, scenes: list[dict], claims: str, status: dict, bud
     total = sum(words(sc.get("voiceover", "")) for sc in scenes)
     nums = number_issues(scenes, claims)
     edits = llm.complete_json(conn, SYSTEM, f"""
-You are the fact-checking EDITOR of a {"travel vlog" if (p.get("format") or "") == "vlog" else "documentary"} script in {lang} about: {p['topic']}.
+You are the fact-checking EDITOR of a {film_word(p)} script in {lang} about: {p['topic']}.
 
 Fix the script with minimal, targeted edits. Never shorten a scene; rewrite it at similar or greater length.
 1. NUMBERS: these scenes contain numbers that are NOT in the claims (scene: numbers): {json.dumps(nums, ensure_ascii=False)}
@@ -482,10 +489,10 @@ ALL CLAIMS:
     if deficit > budget * TOLERANCE:
         n_new = max(1, round(deficit / SCENE_WORDS))
         ext = llm.complete_json(conn, SYSTEM, f"""
-The {"travel vlog" if (p.get("format") or "") == "vlog" else "documentary"} script in {lang} about {p['topic']} is too short: {total} words, target {budget}.
+The {film_word(p)} script in {lang} about {p['topic']} is too short: {total} words, target {budget}.
 INSERT about {n_new} NEW scenes of {SCENE_WORDS}-{SCENE_WORDS + 15} words each where they fit the story best.
 Use ONLY the UNUSED CLAIMS (new facts). A scene that repeats a fact already told will be rejected. Do not change existing scenes.
-Place each new scene where it fits {"in the chapter (stop) the fact belongs to" if (p.get("format") or "") == "vlog" else "CHRONOLOGICALLY"}.
+Place each new scene where it fits {"in the chapter (stop) the fact belongs to" if (p.get("format") or "") == "vlog" else "in the chapter (title) the fact belongs to" if (p.get("format") or "") == "review" else "CHRONOLOGICALLY"}.
 Every fact and number must come from the claims.
 {extra_rules}
 
@@ -523,17 +530,23 @@ def script_shorts(conn, step) -> StepResult:
                        (p["id"],)).fetchone()
     lang = LANG_NAME.get(p["language"], p["language"])
     vlog = (p.get("format") or "documentary") == "vlog"
+    review = (p.get("format") or "documentary") == "review"
     if vlog:
         from .vlog import STYLE_VLOG
-    style = STYLE_VLOG if vlog else STYLE
-    film = "travel vlog" if vlog else "documentary"
+        style = STYLE_VLOG
+    elif review:
+        from . import review as RV
+        style = RV.style(conn)
+    else:
+        style = STYLE
+    film = film_word(p)
     prompt = f"""
 Write an independent YouTube Shorts script ({p['shorts_seconds']} seconds, vertical 9:16) in {lang}.
 Topic: {p['topic']}. The full {film} is titled: "{doc['t'] if doc else p['title']}".
 
 Write EXACTLY {len(per_scene)} scenes with these narration lengths in words: {[round(w * LENGTH_BOOST) if i else w for i, w in enumerate(per_scene)]}.
 - Scene 1 = HOOK (about 3 seconds): instant curiosity — a shocking fact, a question or tension. It must be TRUE to the claims.
-- {"The most striking places/facts of the route as a quick teaser" if vlog else "One focused story arc with escalating tension"}; it must make sense on its own.
+- {"The most striking places/facts of the route as a quick teaser" if vlog else "The host's quick-fire picks: one or two spoiler-free lines per title, name each title clearly" if review else "One focused story arc with escalating tension"}; it must make sense on its own.
 - Last scene: a natural line that makes viewers want the full {film} (no "like and subscribe").
 - Visuals must work in vertical framing (close-ups, details, single subjects).
 
@@ -560,6 +573,8 @@ CLAIMS:
     scenes, dd_notes = dedupe_scenes(scenes, int(budget * (1 - TOLERANCE)) - 10)
     scenes, short_note = _shorten(conn, p, scenes, budget, claims, style)
     mark_needs_check(scenes, practical_refs(conn, p["id"]))
+    if review:
+        RV.shorts_layouts(scenes, RV.titles(conn, p["id"]))
     data = {**data, "scenes": scenes, "editor_notes": edits.get("notes", []) + dd_notes + short_note}
     errs = validate_shorts(data, budget, status) + [
         f"sahne {i}: kaynakta olmayan sayı {', '.join(n)}" for i, n in number_issues(scenes, claims).items()]
@@ -619,11 +634,11 @@ def _save(conn, project_id, kind, data, scenes, wpm, errs):
         w = words(s["voiceover"])
         conn.execute(
             "insert into scenes (project_id, script_id, kind, idx, act, est_duration_sec, voiceover_text, visual_description, "
-            "camera_move, transition, music, sfx, search_keywords, claim_refs, on_screen_text, word_count, needs_check) "
-            "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            "camera_move, transition, music, sfx, search_keywords, claim_refs, on_screen_text, word_count, needs_check, layout, title_ref) "
+            "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (project_id, sid, kind, i, s.get("_act"), round(w / wpm * 60, 2), s["voiceover"], s.get("visual_description"),
              s.get("camera_move"), s.get("transition"), s.get("music"), s.get("sfx"), s.get("search_keywords") or [],
-             s.get("claim_refs") or [], s.get("on_screen_text"), w, bool(s.get("needs_check"))))
+             s.get("claim_refs") or [], s.get("on_screen_text"), w, bool(s.get("needs_check")), s.get("layout"), s.get("title_ref")))
     return version, total
 
 

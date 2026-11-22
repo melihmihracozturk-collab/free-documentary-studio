@@ -13,9 +13,9 @@ function slugify(input, max = 48) {
 }
 
 const { DATABASE_URL, TOPIC, MINUTES = "11", LANGUAGE = "tr", FORMAT = "documentary" } = process.env;
-const STYLE = process.env.STYLE || (FORMAT === "vlog" ? "Samimi gezi vlogu" : "Sinematik kısa belgesel");
-if (!["documentary", "vlog"].includes(FORMAT)) {
-  console.error("FORMAT documentary veya vlog olmalı");
+const STYLE = process.env.STYLE || (FORMAT === "vlog" ? "Samimi gezi vlogu" : FORMAT === "review" ? "Enerjik ve samimi öneri videosu" : "Sinematik kısa belgesel");
+if (!["documentary", "vlog", "review"].includes(FORMAT)) {
+  console.error("FORMAT documentary, vlog veya review olmalı");
   process.exit(1);
 }
 if (!DATABASE_URL || !TOPIC) {
@@ -29,7 +29,7 @@ if (!(minutes >= 8 && minutes <= 15)) {
 }
 const sql = postgres(DATABASE_URL, { prepare: false, max: 1, onnotice: () => {} });
 try {
-  const base = slugify(TOPIC);
+  const base = FORMAT === "review" ? `oneri-${slugify(TOPIC, 41)}` : slugify(TOPIC);
   let slug = base;
   for (let i = 2; (await sql`select 1 from projects where slug = ${slug}`).length; i++) slug = `${base}-${i}`;
   await sql.begin(async (tx) => {

@@ -129,7 +129,10 @@ def search_all(queries: list[str], cache: dict, errors: list[str], with_openvers
 
 def match(conn, step) -> StepResult:
     pid = step["project_id"]
-    p = conn.execute("select slug from projects where id=%s", (pid,)).fetchone()
+    p = conn.execute("select slug, format from projects where id=%s", (pid,)).fetchone()
+    if (p.get("format") or "documentary") == "review":
+        from .review import match as match_review       # öneri: arşiv araması yok, yapımların afişleri
+        return match_review(conn, step)
     st = _settings(conn)
     allow_nc, allow_sa = st.get("license_allow_nc") is True, st.get("license_allow_sa") is not False
     draft = st.get("license_allow_restricted") is True          # kullanıcının açtığı taslak modu: telifli de önerilir

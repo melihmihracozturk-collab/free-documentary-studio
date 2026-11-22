@@ -52,6 +52,8 @@ def allowed(cls: str, allow_nc: bool = False, allow_sa: bool = True, allow_restr
     kısıtlı olanlar işaretlenir ve kullanıcı yayından önce değiştirir."""
     if allow_restricted and is_restricted(cls):
         return True, "TASLAK: telifli/izinsiz olabilir — yayından önce değiştirin"
+    if cls == "promo":
+        return True, "telifli tanıtım görseli (afiş): yalnızca inceleme/eleştiri amaçlı, kaynak belirtilir"
     if cls == "own":
         return True, "kullanıcının kendi yüklemesi (kullanım hakkı beyanı)"
     if cls in ("pd", "cc0", "by"):
@@ -66,4 +68,4 @@ def allowed(cls: str, allow_nc: bool = False, allow_sa: bool = True, allow_restr
 
 
 def needs_attribution(cls: str) -> bool:
-    return cls in ("by", "by-sa", "nc")
+    return cls in ("by", "by-sa", "nc", "promo")

@@ -24,7 +24,7 @@ on:
         required: true
         default: documentary
         type: choice
-        options: [documentary, vlog]
+        options: [documentary, vlog, review]
 
 permissions:
   contents: read

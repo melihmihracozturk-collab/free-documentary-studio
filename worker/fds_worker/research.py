@@ -89,13 +89,16 @@ def _relevant(src: S.Source, keywords: list[str]) -> bool:
 # Kaynak türüne göre metin üst sınırı ve toplam bütçe (LLM kotasını korur: ~4-5 çıkarma çağrısı)
 # Ansiklopedi maddesi başına 12k: tek uzun madde bütçeyi doldurmasın, daha çok farklı madde (kişiler, olaylar,
 # proje dilindeki Vikipedi) girsin. İttihat ve Terakki'de 30k sınırla yalnızca 3 madde girebilmişti.
-TYPE_CAP = {"encyclopedia": 12000, "academic": 4000, "archive": 3000, "guide": 10000, "news": 5000, "official": 6000}
+TYPE_CAP = {"catalog": 6000, "encyclopedia": 12000, "academic": 4000, "archive": 3000, "guide": 10000, "news": 5000, "official": 6000}
 TOTAL_BUDGET = 170000
 MAIN_ARTICLE_CAP = 30000
 TYPE_BUDGET = {"encyclopedia": 85000, "academic": 40000, "archive": 15000, "guide": 36000,
                "news": 45000, "official": 24000}   # news/official: Vikipedi kaynakçası + GDELT (güncel konular)  # guide: Wikivoyage (vlog)
 # Vlog: her durağın rehberi (pratik bilgi) girsin; akademik kaynak ikinci planda
 VLOG_BUDGET = {"encyclopedia": 60000, "academic": 15000, "archive": 5000, "guide": 60000, "news": 10000, "official": 10000}
+# Öneri: her yapımın katalog kaydı + Vikipedi maddesi (yapım, konu, eleştirel karşılama)
+REVIEW_BUDGET = {"catalog": 45000, "encyclopedia": 90000, "academic": 5000, "archive": 5000, "guide": 5000,
+                 "news": 15000, "official": 10000}
 TYPE_PRIORITY = {"encyclopedia": 0, "guide": 0, "academic": 1, "archive": 2}
 
 
@@ -158,7 +161,7 @@ def _interleave(srcs: list[S.Source]) -> list[S.Source]:
 
 
 def select_sources(found: list[S.Source], keywords: list[str], dropped: list | None = None,
-                   budget: dict | None = None) -> list[S.Source]:
+                   budget: dict | None = None, allow_media: bool = False) -> list[S.Source]:
     """Tekilleştir (URL, DOI, başlık), alakasızları ele, metni kırp, toplam bütçeye sığdır.
 
     dropped verilirse elenen her kaynak için (başlık, neden) eklenir (tanılama için).
@@ -170,8 +173,9 @@ def select_sources(found: list[S.Source], keywords: list[str], dropped: list | N
         keys.discard(None)
         if keys & seen:
             continue
-        if not _relevant(s, keywords) or is_media_work(s):
-            drop.append((s.collector, s.title, "ilgisiz" if not is_media_work(s) else "eser"))
+        media = is_media_work(s) and not allow_media             # öneri videosunda eser maddeleri asıl kaynaktır
+        if not _relevant(s, keywords) or media:
+            drop.append((s.collector, s.title, "ilgisiz" if not media else "eser"))
             continue
         seen |= keys
         s.extra["_full"] = s.text
@@ -215,6 +219,10 @@ def is_vlog(p) -> bool:
     return (p.get("format") or "documentary") == "vlog"
 
 
+def is_review(p) -> bool:
+    return (p.get("format") or "documentary") == "review"
+
+
 VLOG_PLAN = """
 Plan research for a {minutes}-minute first-person TRAVEL VLOG (YouTube) built from archive photos and narration.
 Topic: {topic}
@@ -235,6 +243,9 @@ def collect(conn, step) -> StepResult:
     p = _project(conn, step["project_id"])
     if is_vlog(p):
         return _collect_vlog(conn, step, p)
+    if is_review(p):
+        from .review import collect as collect_review
+        return collect_review(conn, step, p)
     lang = p["language"]
     plan = llm.complete_json(conn, SYSTEM, f"""
 Plan research for a {p['target_minutes']}-minute documentary.
@@ -322,7 +333,8 @@ def _collect_vlog(conn, step, p) -> StepResult:
 
 def _store_sources(conn, step, p, plan, found, keywords, errors) -> StepResult:
     dropped: list = []
-    unique = select_sources(found, keywords, dropped, VLOG_BUDGET if is_vlog(p) else None)
+    unique = select_sources(found, keywords, dropped,
+                            VLOG_BUDGET if is_vlog(p) else REVIEW_BUDGET if is_review(p) else None, allow_media=is_review(p))
     print(f"[research] bulunan {len(found)}, seçilen {len(unique)}", flush=True)
     for c, t, why in dropped:
         print(f"[research]   elendi ({why}) {c}: {t[:90]}", flush=True)
@@ -384,10 +396,15 @@ dates and sequence of events, people, places, numbers, causes, consequences, eye
 scientific findings and scholarly debates. Aim for 15-30 claims if the sources allow; skip off-topic material."""
 
 
+def _review_needs() -> str:
+    from .review import REVIEW_NEEDS
+    return REVIEW_NEEDS
+
+
 def _extract(conn, p, lang, chunk):
     return llm.complete_json(conn, SYSTEM, f"""
 Topic: {p['topic']}
-From the SOURCES below, extract {VLOG_NEEDS if is_vlog(p) else DOC_NEEDS}
+From the SOURCES below, extract {VLOG_NEEDS if is_vlog(p) else _review_needs() if is_review(p) else DOC_NEEDS}
 
 Rules:
 - Every claim must be supported by a VERBATIM quote (5-30 words, copied exactly, original language) from one source.
