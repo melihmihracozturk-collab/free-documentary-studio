@@ -25,6 +25,14 @@ from .handlers import registry
 from .llm import QuotaExhausted
 
 HEARTBEAT_SEC = 30
+IDLE_POLL_SEC = 20
+
+
+def waiting_for_user(conn) -> bool:
+    """Son 3 saatte kullanıcı onayı beklemeye geçmiş bir iş var mı? (onay gelince hemen devam etmek için)"""
+    return bool(conn.execute(
+        "select exists(select 1 from jobs where status = 'waiting_input' and updated_at > now() - interval '3 hours') ok"
+    ).fetchone()["ok"])
 
 
 def connect(url: str) -> psycopg.Connection:
@@ -47,11 +55,14 @@ class Heartbeat(threading.Thread):
         self.stop_event.set()
 
 
-def run(url: str, max_minutes: float, dry_run: bool, once: bool) -> int:
+def run(url: str, max_minutes: float, dry_run: bool, once: bool, idle_minutes: float = 0.0) -> int:
+    """idle_minutes > 0: kuyruk boşalınca, onay bekleyen bir iş varsa bu kadar dakika boyunca kuyruğu yoklar.
+    Panelin GitHub'ı tetikleyemediği durumda bile onaydan sonraki adım saniyeler içinde başlar."""
     worker_id = f"{os.environ.get('GITHUB_RUN_ID', socket.gethostname())}-{uuid.uuid4().hex[:6]}"
     handlers = registry(dry_run)
     deadline = time.monotonic() + max_minutes * 60
     processed = 0
+    idle_until: float | None = None
 
     with connect(url) as conn:
         requeued = conn.execute("select requeue_stale_steps() as n").fetchone()["n"]
@@ -65,8 +76,16 @@ def run(url: str, max_minutes: float, dry_run: bool, once: bool) -> int:
                 "select * from claim_next_step(%s, %s)", (worker_id, list(handlers))
             ).fetchone()
             if step is None:
+                if idle_minutes > 0 and not once and waiting_for_user(conn):
+                    if idle_until is None:
+                        idle_until = time.monotonic() + idle_minutes * 60
+                        print(f"[worker] Onay bekleyen iş var; {idle_minutes:g} dk boyunca kuyruk yoklanıyor.")
+                    if time.monotonic() + IDLE_POLL_SEC < min(idle_until, deadline):
+                        time.sleep(IDLE_POLL_SEC)
+                        continue
                 print("[worker] Kuyrukta uygun adım yok.")
                 break
+            idle_until = None                      # iş geldi: bekleme süresi sonraki boşlukta yeniden başlar
 
             print(f"[worker] → {step['step_key']} (deneme {step['attempts']}/{step['max_attempts']})")
             hb = Heartbeat(url, step["id"], worker_id)
@@ -123,6 +142,8 @@ def main() -> None:
     ap.add_argument("--max-minutes", type=float, default=float(os.environ.get("WORKER_MAX_MINUTES", 300)))
     ap.add_argument("--dry-run", action="store_true", help="Yalnızca test: sahte işleyiciler")
     ap.add_argument("--once", action="store_true", help="Tek adım işle ve çık")
+    ap.add_argument("--idle-minutes", type=float, default=float(os.environ.get("WORKER_IDLE_MINUTES", 0)),
+                    help="Kuyruk boşken onay bekleyen iş varsa yoklama süresi (dk)")
     args = ap.parse_args()
     url = (os.environ.get("DATABASE_URL") or "").strip()
     if not url:
@@ -131,7 +152,7 @@ def main() -> None:
     if problem:
         sys.exit(problem)
     try:
-        run(url, args.max_minutes, args.dry_run, args.once)
+        run(url, args.max_minutes, args.dry_run, args.once, args.idle_minutes)
     except psycopg.OperationalError as e:
         # Actions günlükleri herkese açık: bağlantı hatasında adres/şifre yazdırılmaz.
         sys.exit(f"Veritabanına bağlanılamadı ({type(e).__name__}). Supabase projesi duraklatılmış veya şifre yanlış olabilir.")

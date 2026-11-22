@@ -45,6 +45,8 @@ jobs:
         working-directory: worker
         env:
           WORKER_MAX_MINUTES: "300"
+          # Onay bekleyen iş varsa kuyruk boşalınca 20 dk yokla: onay verilince işçi yeniden tetiklenmeden devam eder
+          WORKER_IDLE_MINUTES: "20"
           PYTHONUNBUFFERED: "1"   # günlük satırları anında görünsün (yoksa hepsi iş sonunda tek seferde yazılıyor)
         run: python -m fds_worker
       - name: Yapılandırma eksik

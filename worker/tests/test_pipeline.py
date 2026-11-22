@@ -194,3 +194,42 @@ def test_voiceovers_uploaded_before_wait_step_opens(db_url, conn):
     assert s["voiceover_wait"]["status"] == "done"
     assert s["voiceover_analyze"]["status"] == "done"
     assert s["visual_review"]["status"] == "waiting_input"
+
+
+def test_idle_worker_picks_up_approval_without_new_trigger(db_url, conn, monkeypatch):
+    """Panel GitHub'ı tetikleyemese bile: işçi onay bekleyen iş varken kuyruğu yoklar, onay gelince devam eder."""
+    import threading
+
+    from fds_worker import main as M
+    monkeypatch.setattr(M, "IDLE_POLL_SEC", 0.2)
+    pid, job = make_project(conn)
+    run(db_url, 1, dry_run=True, once=False)                        # araştırma onayında durur
+    review = steps(conn, job)["research_review"]
+    assert review["status"] == "waiting_input"
+
+    def approve_later():
+        import time
+        time.sleep(0.6)
+        with psycopg.connect(db_url, autocommit=True) as c:
+            c.execute("select resolve_input_step(%s)", (review["id"],))
+    t = threading.Thread(target=approve_later)
+    t.start()
+    n = run(db_url, 1, dry_run=True, once=False, idle_minutes=0.1)    # ~6 sn yoklama (yük altında da yeterli)
+    t.join()
+    s = steps(conn, job)
+    assert n >= 2 and s["script_shorts"]["status"] == "done" and s["script_review"]["status"] == "waiting_input"
+
+
+def test_idle_disabled_or_nothing_waiting_exits_immediately(db_url, conn):
+    import time
+    _, job = make_project(conn)
+    run(db_url, 1, dry_run=True, once=False)
+    t0 = time.monotonic()
+    run(db_url, 1, dry_run=True, once=False, idle_minutes=0)          # yoklama kapalı → hemen çıkar
+    assert time.monotonic() - t0 < 2
+    conn.execute("alter table jobs disable trigger jobs_touch")          # updated_at'i elle geriye almak için
+    conn.execute("update jobs set updated_at = now() - interval '5 hours' where id=%s", (job,))
+    conn.execute("alter table jobs enable trigger jobs_touch")
+    t0 = time.monotonic()
+    run(db_url, 1, dry_run=True, once=False, idle_minutes=1)          # eski bekleyen iş → yoklama yok
+    assert time.monotonic() - t0 < 2
