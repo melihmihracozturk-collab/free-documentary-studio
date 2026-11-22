@@ -351,3 +351,10 @@ def test_review_render_end_to_end(conn, s3, tmp_path):  # noqa: F811
     assert abs(out.output["duration_sec"] - 4.0) < 0.3
     r = conn.execute("select width, height, status from renders where project_id=%s", (pid,)).fetchone()
     assert (r["width"], r["height"], r["status"]) == (1920, 1080, "done")
+
+
+def test_long_title_words_shrink_to_fit():
+    from PIL import Image, ImageDraw
+    d = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
+    f, lines = motion.fit_font(d, "Bleach: Thousand-Year Blood War", 66, 360, 3)
+    assert f.size < 66 and all(d.textlength(ln, font=f) <= 360 for ln in lines) and len(lines) <= 3

@@ -20,7 +20,7 @@ from pathlib import Path
 
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-MOTION_VERSION = "m1"
+MOTION_VERSION = "m3"
 ACCENT = (155, 123, 240)
 
 
@@ -81,6 +81,19 @@ def wrap(draw, text: str, fnt, width: int, max_lines: int = 3) -> list[str]:
         lines = lines[:max_lines]
         lines[-1] = lines[-1].rstrip(".,") + "…"
     return lines
+
+
+def fit_font(draw, text: str, size: int, width: int, max_lines: int = 3, min_size: int = 24):
+    """Her kelime satıra sığana ve metin max_lines satırı aşmayana kadar yazı boyutunu küçültür
+    (ör. 'Thousand-Year' gibi uzun tek kelimeler kesilmesin). Dönüş: (font, satırlar)."""
+    size = int(size)
+    while True:
+        f = font(size)
+        lines = wrap(draw, text, f, width, max_lines=99)
+        fits = all(draw.textlength(ln, font=f) <= width for ln in lines) and len(lines) <= max_lines
+        if fits or size <= min_size:
+            return f, wrap(draw, text, f, width, max_lines)
+        size = int(size * 0.9)
 
 
 def gradient(size, top, bottom):
@@ -232,8 +245,8 @@ def info_card(t: dict, rank: int | None, width: int, color, compact: bool = Fals
         d.rounded_rectangle((0, y, tw + 44 * scale, y + 64 * scale), int(32 * scale), fill=(*acc, 255))
         d.text((22 * scale, y + 32 * scale), label, font=f, fill=(20, 16, 36), anchor="lm")
         y += int(88 * scale)
-    f = font(int(66 * scale))
-    for ln in wrap(d, t.get("name") or "", f, width, 3):
+    f, lines = fit_font(d, t.get("name") or "", int(66 * scale), width, 3)
+    for ln in lines:
         d.text((0, y), ln, font=f, fill=(255, 255, 255))
         y += int(f.size * 1.15)
     orig = t.get("original") if latin(t.get("original")) else (t.get("name_en") if t.get("name_en") != t.get("name") else None)
@@ -292,12 +305,11 @@ def headline(text: str, width: int, size: int, color, sub: str | None = None):
         fs = font(int(size * 0.42))
         d.text((0, 0), tr_upper(sub), font=fs, fill=(*acc, 255))
         y += int(size * 0.7)
-    f = font(size)
-    lines = wrap(d, text, f, width, 3)
+    f, lines = fit_font(d, text, size, width, 3)
     for ln in lines:
         d.text((4, y + 4), ln, font=f, fill=(0, 0, 0, 110))
         d.text((0, y), ln, font=f, fill=(255, 255, 255))
-        y += int(size * 1.15)
+        y += int(f.size * 1.15)
     d.rounded_rectangle((0, y + 10, int(size * 2.4), y + 22), 6, fill=(*acc, 255))
     return img.crop((0, 0, width, y + 30))
 
@@ -343,7 +355,7 @@ def shape(kind: str, r: int, rgba):
 def content_box(fmt_kind: str, w: int, h: int, layout: str) -> tuple[int, int, int, int]:
     """Grafiklerin yerleşeceği alan: sunucu ve altyazı alanı dışında kalır."""
     if fmt_kind == "shorts":
-        return (60, 150, w - 60, 1090)
+        return (60, 150, w - 60, 930)          # 940-1140 arası altyazı bandı, altında sunucu
     if layout == "full":
         return (100, 60, w - 100, h - 170)
     return (90, 70, 1110, h - 190)
@@ -401,7 +413,7 @@ def build(layout: str, fmt_kind: str, w: int, h: int, title: dict | None, poster
 
     bg = poster_bg((w, h), poster, color)
     if layout == "title":
-        ph = int(bh * (0.95 if not vertical else 0.52))
+        ph = int(bh * (0.95 if not vertical else 0.44))
         card, pad = poster_card(poster, t, ph, color)
         if vertical:
             cx, cy = x0 + (bw - card.width + 2 * pad) // 2 - pad, y0 - pad
