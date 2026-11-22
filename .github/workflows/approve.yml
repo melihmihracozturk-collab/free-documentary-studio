@@ -12,7 +12,7 @@ on:
         required: true
         default: research_review
         type: choice
-        options: [research_review]
+        options: [research_review, script_review, visual_review]
 
 permissions:
   contents: read

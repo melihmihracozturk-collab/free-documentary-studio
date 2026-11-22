@@ -10,6 +10,18 @@ try {
                         where p.slug = ${SLUG} and s.step_key = ${STEP} and s.status = 'waiting_input'
                         order by j.created_at desc limit 1`;
   if (!s) throw new Error(`${SLUG}: onay bekleyen '${STEP}' adımı yok`);
+  if (STEP === "visual_review") {
+    // Paneldeki kural: her sahnede görsel olmalı (Ayla'nın sunucu sahneleri hariç)
+    const [m] = await sql`select count(*)::int n from scenes sc join projects p on p.id = sc.project_id
+                          where p.slug = ${SLUG} and sc.asset_id is null and coalesce(sc.layout, '') <> 'host'`;
+    if (m.n > 0) throw new Error(`${SLUG}: ${m.n} sahnede görsel yok; önce panelden görsel seçin`);
+  }
+  if (STEP === "script_review") {
+    // Paneldeki gibi: en son senaryo sürümleri onaylı işaretlenir (seslendirme onaylı metinden üretilir)
+    await sql`update scripts s set approved_at = now() from projects p
+               where p.id = s.project_id and p.slug = ${SLUG}
+                 and s.version = (select max(version) from scripts x where x.project_id = s.project_id and x.kind = s.kind)`;
+  }
   const [r] = await sql`select resolve_input_step(${s.id}, ${sql.json({ approved_by: "user", via: "github-actions", at: new Date().toISOString() })}) ok`;
   console.log(r.ok ? `${SLUG}: ${STEP} onaylandı.` : "Onaylanamadı");
   if (!r.ok) process.exitCode = 1;
