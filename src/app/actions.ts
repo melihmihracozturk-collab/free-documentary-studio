@@ -263,7 +263,9 @@ export async function addSceneImage(slug: string, sceneId: string, input: unknow
 export async function approveVisuals(slug: string): Promise<FormState> {
   const p = await projectBySlug(slug);
   const sql = db();
-  const [m] = await sql<{ n: number }[]>`select count(*)::int n from scenes where project_id = ${p.id} and asset_id is null`;
+  // Ayla'nın sunucu sahneleri (layout = 'host') bilerek görselsizdir: ekranda sunucu ve hareketli grafik var
+  const [m] = await sql<{ n: number }[]>`select count(*)::int n from scenes where project_id = ${p.id} and asset_id is null
+                                          and coalesce(layout, '') <> 'host'`;
   if (m.n > 0) return { error: `${m.n} sahnede görsel yok; önce her sahneye görsel seçin` };
   const [step] = await sql<{ id: string }[]>`
     select s.id from job_steps s join jobs j on j.id = s.job_id
