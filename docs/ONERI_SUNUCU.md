@@ -55,6 +55,14 @@ Bilgisayarınıza hiçbir şey kurulmaz; her şey mevcut stüdyonun bulut hattı
 Düzenler kodla atanır: giriş ve kapanış `host`, her yapımın ilk sahnesi `title`, diğer sahneler `poster` / `mood` /
 `full` arasında döner. Art arda iki `full` sahne gelmez. Kipler arasında 0,6 saniyelik yumuşak geçiş vardır.
 
+## Diğer biçimlerden ayrım
+
+- Ayla'nın kodu yalnızca `format = 'review'` projelerde çalışır; belgesel ve vlog akışı değişmez.
+- Panelde her projede renkli bir biçim etiketi vardır: Belgesel (amber), Vlog (mavi), Öneri · Ayla (mor). Proje
+  Arşivi'nde biçime göre sekmeler, modül sayfalarındaki proje seçicide biçime göre gruplar bulunur.
+- Öneri projelerinin adresleri ve R2 klasörleri `oneri-` ön ekiyle başlar (`projects/oneri-bleach/…`).
+- Ortak olanlar: tek iş kuyruğu (projeler sırayla işlenir), R2 depolama kotası, GitHub Actions dakikaları, Gemini kotası.
+
 ## Kurulum (yalnızca yeni olanlar)
 
 1. **Şema:** Actions → *migrate* → *Run workflow* (`0013_license_draft.sql` ve `0014_review.sql` uygulanır).

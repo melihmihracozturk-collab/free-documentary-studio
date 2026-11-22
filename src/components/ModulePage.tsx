@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Card, Empty, PageHeader, StatusBadge } from "./ui";
+import { Card, Empty, FormatBadge, PageHeader, StatusBadge } from "./ui";
+import { FORMATS } from "@/lib/nav";
 import { getProjectStatus, listProjects } from "@/lib/queries";
 
 export type ModuleConfig = {
@@ -41,16 +42,21 @@ export async function ModulePage({ config, selected, render }: {
       ) : (
         <div className="grid gap-6 lg:grid-cols-[14rem_minmax(0,1fr)]">
           <Card title="Proje">
-            <ul className="space-y-0.5">
-              {projects.map((p) => (
-                <li key={p.id}>
-                  <Link href={`${config.basePath}?p=${p.slug}`}
-                        className={`block truncate rounded px-2 py-1.5 text-sm ${p.slug === slug ? "bg-amber-500/15 text-amber-300" : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"}`}>
-                    {p.title}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            {FORMATS.filter((fm) => projects.some((p) => (p.format ?? "documentary") === fm.key)).map((fm) => (
+              <div key={fm.key} className="mb-3 last:mb-0">
+                <div className="mb-1 px-2"><FormatBadge format={fm.key} /></div>
+                <ul className="space-y-0.5">
+                  {projects.filter((p) => (p.format ?? "documentary") === fm.key).map((p) => (
+                    <li key={p.id}>
+                      <Link href={`${config.basePath}?p=${p.slug}`}
+                            className={`block truncate rounded px-2 py-1.5 text-sm ${p.slug === slug ? "bg-amber-500/15 text-amber-300" : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"}`}>
+                        {p.title}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </Card>
           <div className="space-y-6">
             <Card title={status ? status.project.title : "Proje"}

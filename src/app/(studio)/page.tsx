@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getDashboard } from "@/lib/queries";
-import { Card, Empty, PageHeader, Stat, StatusBadge, btnPrimary } from "@/components/ui";
+import { Card, Empty, FormatBadge, PageHeader, Stat, StatusBadge, btnPrimary } from "@/components/ui";
 import { StorageMeter } from "@/components/StorageMeter";
 import { timeAgo } from "@/lib/format";
 
@@ -15,7 +15,7 @@ export default async function Dashboard() {
   return (
     <>
       <PageHeader title="Dashboard" description="Projelerin, bekleyen işlerin ve ücretsiz kotaların genel durumu.">
-        <Link href="/yeni" className={btnPrimary}>Yeni belgesel</Link>
+        <Link href="/yeni" className={btnPrimary}>Yeni proje</Link>
       </PageHeader>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -39,7 +39,7 @@ export default async function Dashboard() {
                 <li key={p.id}>
                   <Link href={`/projeler/${p.slug}`} className="flex items-center justify-between gap-4 py-3 hover:text-white">
                     <div className="min-w-0">
-                      <div className="truncate text-sm text-zinc-100">{p.title}</div>
+                      <div className="flex items-center gap-2"><span className="truncate text-sm text-zinc-100">{p.title}</span><FormatBadge format={p.format} /></div>
                       <div className="text-xs text-zinc-500">{p.current_label ?? "—"} · {timeAgo(p.updated_at)}</div>
                     </div>
                     <StatusBadge status={p.current_status ?? p.status} />

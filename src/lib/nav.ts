@@ -12,6 +12,14 @@ export const NAV = [
   { href: "/ayarlar", label: "Ayarlar", icon: "Settings" },
 ] as const;
 
+/** Proje biçimleri: panelde ayrı sekme ve renkli etiketle gösterilir. */
+export const FORMATS = [
+  { key: "documentary", label: "Belgesel", short: "Belgesel" },
+  { key: "vlog", label: "Gezi vlogu", short: "Vlog" },
+  { key: "review", label: "Anime / dizi / film önerisi", short: "Öneri · Ayla" },
+] as const;
+export type FormatKey = (typeof FORMATS)[number]["key"];
+
 export const STATUS_LABEL: Record<string, string> = {
   pending: "Sırada",
   queued: "Sırada",

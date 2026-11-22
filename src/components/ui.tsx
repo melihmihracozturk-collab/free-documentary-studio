@@ -1,4 +1,4 @@
-import { STATUS_LABEL } from "@/lib/nav";
+import { FORMATS, STATUS_LABEL } from "@/lib/nav";
 
 const TONE: Record<string, string> = {
   done: "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30",
@@ -9,6 +9,22 @@ const TONE: Record<string, string> = {
   error: "bg-rose-500/15 text-rose-300 ring-rose-500/30",
   warning: "bg-amber-500/15 text-amber-300 ring-amber-500/30",
 };
+
+const FORMAT_TONE: Record<string, string> = {
+  documentary: "bg-amber-500/10 text-amber-300 ring-amber-500/25",
+  vlog: "bg-sky-500/10 text-sky-300 ring-sky-500/25",
+  review: "bg-violet-500/15 text-violet-300 ring-violet-500/30",
+};
+
+/** Projenin biçimi: Belgesel (amber), Vlog (mavi), Öneri · Ayla (mor). Sistemler panelde karışmasın diye her yerde gösterilir. */
+export function FormatBadge({ format }: { format: string | null | undefined }) {
+  const f = format ?? "documentary";
+  return (
+    <span className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${FORMAT_TONE[f] ?? FORMAT_TONE.documentary}`}>
+      {FORMATS.find((x) => x.key === f)?.short ?? f}
+    </span>
+  );
+}
 
 export function StatusBadge({ status }: { status: string }) {
   return (

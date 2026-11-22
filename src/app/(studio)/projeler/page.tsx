@@ -1,15 +1,31 @@
 import Link from "next/link";
 import { listProjects } from "@/lib/queries";
-import { Card, Empty, PageHeader, StatusBadge, btnPrimary } from "@/components/ui";
+import { Card, Empty, FormatBadge, PageHeader, StatusBadge, btnPrimary } from "@/components/ui";
 import { formatDate } from "@/lib/format";
+import { FORMATS } from "@/lib/nav";
 
-export default async function Projects() {
-  const projects = await listProjects();
+export default async function Projects({ searchParams }: PageProps<"/projeler">) {
+  const { f } = await searchParams;
+  const all = await listProjects();
+  const active = FORMATS.some((x) => x.key === f) ? (f as string) : "all";
+  const projects = active === "all" ? all : all.filter((p) => (p.format ?? "documentary") === active);
+  const tabs = [{ key: "all", label: "Tümü" }, ...FORMATS];
   return (
     <>
-      <PageHeader title="Proje Arşivi" description="Her belgesel ayrı bir proje olarak bulutta saklanır.">
-        <Link href="/yeni" className={btnPrimary}>Yeni belgesel</Link>
+      <PageHeader title="Proje Arşivi" description="Her proje ayrı saklanır; belgesel, vlog ve Ayla'nın öneri videoları ayrı sekmelerde.">
+        <Link href="/yeni" className={btnPrimary}>Yeni proje</Link>
       </PageHeader>
+      <nav className="mb-4 flex flex-wrap gap-2" aria-label="Biçim">
+        {tabs.map((t) => {
+          const n = t.key === "all" ? all.length : all.filter((p) => (p.format ?? "documentary") === t.key).length;
+          return (
+            <Link key={t.key} href={t.key === "all" ? "/projeler" : `/projeler?f=${t.key}`}
+                  className={`rounded-full px-3 py-1 text-sm ring-1 ring-inset ${active === t.key ? "bg-white/10 text-zinc-50 ring-white/20" : "text-zinc-400 ring-white/10 hover:bg-white/5"}`}>
+              {t.label} <span className="tabular-nums text-zinc-500">{n}</span>
+            </Link>
+          );
+        })}
+      </nav>
       <Card>
         {projects.length === 0 ? <Empty>Henüz proje yok.</Empty> : (
           <div className="overflow-x-auto">
@@ -26,7 +42,10 @@ export default async function Projects() {
                 {projects.map((p) => (
                   <tr key={p.id}>
                     <td className="py-3 pr-4">
-                      <Link href={`/projeler/${p.slug}`} className="text-zinc-100 hover:text-amber-300">{p.title}</Link>
+                      <div className="flex items-center gap-2">
+                        <Link href={`/projeler/${p.slug}`} className="text-zinc-100 hover:text-amber-300">{p.title}</Link>
+                        <FormatBadge format={p.format} />
+                      </div>
                       <div className="font-mono text-xs text-zinc-500">{p.slug}</div>
                     </td>
                     <td className="py-3 pr-4 tabular-nums text-zinc-400">
