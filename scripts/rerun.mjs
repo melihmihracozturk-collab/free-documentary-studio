@@ -10,8 +10,8 @@ try {
   const [j] = await sql`select j.id from jobs j join projects p on p.id = j.project_id
                         where p.slug = ${SLUG} order by j.created_at desc limit 1`;
   if (!j) throw new Error(`Proje veya iş bulunamadı: ${SLUG}`);
-  if (["documentary", "vlog"].includes(process.env.FORMAT ?? "")) {
-    const style = process.env.FORMAT === "vlog" ? "Samimi gezi vlogu" : "Sinematik kısa belgesel";
+  if (["documentary", "vlog", "review"].includes(process.env.FORMAT ?? "")) {
+    const style = { vlog: "Samimi gezi vlogu", review: "Enerjik ve samimi öneri videosu" }[process.env.FORMAT] ?? "Sinematik kısa belgesel";
     await sql`update projects set format = ${process.env.FORMAT}, style = ${style} where slug = ${SLUG}`;
     console.log(`${SLUG}: biçim → ${process.env.FORMAT}`);
   }

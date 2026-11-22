@@ -90,7 +90,7 @@ export async function ScriptView({ projectId, slug }: { projectId: string; slug:
   const [{ doc, shorts, docScenes, shortsScenes }, claims, review] = await Promise.all([
     getScripts(projectId), getClaimsText(projectId), getStepState(projectId, "script_review")]);
   const canApprove = review?.status === "waiting_input";
-  const label = doc?.content.format === "vlog" ? "Vlog" : "Belgesel";
+  const label = doc?.content.format === "vlog" ? "Vlog" : doc?.content.format === "review" ? "Öneri videosu" : "Belgesel";
   const refs = practicalRefs(claims);
   const checks = [...docScenes, ...shortsScenes].filter((s) => needsCheck(s, refs)).length;
   if (!doc && !shorts) {

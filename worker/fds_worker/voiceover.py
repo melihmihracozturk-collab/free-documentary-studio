@@ -37,7 +37,7 @@ def build_text(scenes: list[dict]) -> str:
 
 def texts(conn, step) -> StepResult:
     p = conn.execute("select * from projects where id=%s", (step["project_id"],)).fetchone()
-    out = {}
+    out, spoken = {}, {}
     for kind in ("doc", "shorts"):
         sc = conn.execute("select id, approved_at from scripts where project_id=%s and kind=%s order by version desc limit 1",
                           (p["id"], kind)).fetchone()
@@ -48,6 +48,7 @@ def texts(conn, step) -> StepResult:
         scenes = conn.execute("select voiceover_text from scenes where project_id=%s and kind=%s order by idx",
                               (p["id"], kind)).fetchall()
         text = build_text(scenes)
+        spoken[kind] = text
         conn.execute("update scripts set voiceover_text=%s where id=%s", (text, sc["id"]))
         key = None
         if storage.configured():
@@ -55,6 +56,12 @@ def texts(conn, step) -> StepResult:
             storage.upload_bytes(key, text.encode(), "text/plain; charset=utf-8")
         out[kind] = {"chars": len(text), "words": len(text.split()), "file": FILES[kind], "r2_key": key}
     out["elevenlabs_credits_estimate"] = out["doc"]["chars"] + out["shorts"]["chars"]
+    if (p.get("format") or "documentary") == "review":
+        # Öneri biçimi: sunucunun sesi ücretsiz otomatik seslendirmeyle üretilir (yükleme beklenmez)
+        if not storage.configured():
+            raise RuntimeError("Otomatik seslendirme için R2 yapılandırılmalı (R2_* secret'ları)")
+        from . import tts
+        out["tts"] = tts.voice_project(conn, p, spoken)
     return StepResult(output=out)
 
 

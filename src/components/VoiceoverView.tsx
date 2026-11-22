@@ -38,8 +38,18 @@ export async function VoiceoverView({ projectId, slug }: { projectId: string; sl
     return <Card title="Seslendirme"><Empty>Önce senaryoyu Senaryo sayfasında okuyup onaylayın. ElevenLabs metinleri onaylı senaryodan üretilir.</Empty></Card>;
   }
   const r2 = r2Configured();
+  const auto = scripts.doc?.content.format === "review";
   return (
     <>
+      {auto && (
+        <Card title="Otomatik seslendirme (sunucu sesi)">
+          <p className="text-sm text-zinc-400">
+            Öneri videolarında sunucunun sesi bulut işçisi tarafından ücretsiz olarak üretilir (Edge TTS, Türkçe kadın sesi
+            “Emel”; çalışmazsa Gemini TTS). Hiçbir şey yüklemeniz gerekmez; ses hazır olunca analiz ve dudak senkronu
+            kendiliğinden başlar. İsterseniz aşağıdan kendi kaydınızı yükleyerek otomatik sesi değiştirebilirsiniz.
+          </p>
+        </Card>
+      )}
       <Card title="1 · ElevenLabs metinlerini indirin">
         <p className="mb-3 text-sm text-zinc-400">
           Her dosyada yalnızca okunacak cümleler var; sahneler arasında boş satır bırakıldı (doğal duraklama).

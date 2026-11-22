@@ -41,6 +41,8 @@ def classify(*texts: str | None) -> str:
 
 def allowed(cls: str, allow_nc: bool = False, allow_sa: bool = True) -> tuple[bool, str]:
     """(kullanılabilir mi, gerekçe)"""
+    if cls == "promo":
+        return True, "telifli tanıtım görseli (afiş): yalnızca inceleme/eleştiri amaçlı, kaynak belirtilir"
     if cls == "own":
         return True, "kullanıcının kendi yüklemesi (kullanım hakkı beyanı)"
     if cls in ("pd", "cc0", "by"):
@@ -55,4 +57,4 @@ def allowed(cls: str, allow_nc: bool = False, allow_sa: bool = True) -> tuple[bo
 
 
 def needs_attribution(cls: str) -> bool:
-    return cls in ("by", "by-sa", "nc")
+    return cls in ("by", "by-sa", "nc", "promo")

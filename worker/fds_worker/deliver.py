@@ -47,15 +47,25 @@ def doc_description(p: dict, logline: str | None, summary: str | None, chaps, so
         lines += ["KAYNAKLAR"] + [f"• {s['title']} — {s['publisher']}{' (' + s['published'] + ')' if s['published'] else ''}: {s['url']}"
                                   for s in sources[:12]] + [""]
     attr = [a for a in assets if needs_attribution(a["license_class"])]
-    lines += ["GÖRSELLER",
-              "Görseller açık lisanslı arşivlerden alınmıştır (Met Museum Open Access, Wikimedia Commons). "
-              "Kamu malı ve CC0 görseller atıf gerektirmez."]
-    if attr:
+    review = (p.get("format") or "documentary") == "review"
+    if review:
+        lines += ["GÖRSELLER",
+                  "Sunucu karakter ve tüm animasyonlar bu kanal için kodla üretilmiştir. Afişlerin telif hakları "
+                  "yapımcılarına/dağıtımcılarına aittir; yalnızca inceleme ve eleştiri amacıyla kullanılmıştır.",
+                  "Yapım bilgileri: AniList, TMDB ve Vikipedi. This product uses the TMDB API but is not endorsed or "
+                  "certified by TMDB."]
+    else:
+        lines += ["GÖRSELLER",
+                  "Görseller açık lisanslı arşivlerden alınmıştır (Met Museum Open Access, Wikimedia Commons). "
+                  "Kamu malı ve CC0 görseller atıf gerektirmez."]
+    if attr and not review:
         lines.append("Atıf gerektiren görseller:")
         for a in attr:
             lines.append(f"• {a['title']} — {a['author'] or 'bilinmiyor'} — {a['license'] or a['license_class']} — {a['source_url']}")
     lines += ["", "Müzik: telifsiz, özgün olarak üretilmiş ambiyans."]
-    if (p.get("format") or "documentary") == "vlog":
+    if review:
+        lines += ["Seslendirme: yapay zekâ ile üretilmiş ses (sunucu karakter kurgusaldır). Videoda spoiler yoktur."]
+    elif (p.get("format") or "documentary") == "vlog":
         lines += ["Bu video kaynaklı araştırmaya dayanır. Fiyat, açılış saati ve ulaşım bilgileri değişebilir; "
                   "gitmeden önce resmî sitelerden kontrol edin."]
     else:
@@ -64,6 +74,8 @@ def doc_description(p: dict, logline: str | None, summary: str | None, chaps, so
 
 
 def shorts_description(p: dict, title: str | None) -> str:
+    if (p.get("format") or "documentary") == "review":
+        return f"{title or p['title']}\n\nTüm öneriler ve ayrıntılar kanalımızdaki videoda.\n\n#Shorts #anime #dizi #film #öneri\n"
     if (p.get("format") or "documentary") == "vlog":
         return f"{title or p['title']}\n\nTam gezi videosu kanalımızda.\n\n#Shorts #gezi #seyahat\n"
     return f"{title or p['title']}\n\nTam belgesel kanalımızda.\n\n#Shorts #tarih #belgesel\n"

@@ -14,7 +14,7 @@ export type Project = {
   target_minutes: string;
   shorts_seconds: number;
   style: string;
-  format: "documentary" | "vlog";
+  format: "documentary" | "vlog" | "review";
   status: string;
   created_at: Date;
   updated_at: Date;
@@ -181,7 +181,7 @@ export type Scene = {
 export type Script = {
   id: string; kind: "doc" | "shorts"; version: number; approved_at: Date | null; word_count: number | null; est_seconds: string | null;
   voiceover_text: string | null;
-  content: { title?: string; logline?: string; format?: "documentary" | "vlog"; act_titles?: Record<string, string> }; validation: { errors?: string[]; ok?: boolean };
+  content: { title?: string; logline?: string; format?: "documentary" | "vlog" | "review"; act_titles?: Record<string, string> }; validation: { errors?: string[]; ok?: boolean };
   created_at: Date;
 };
 

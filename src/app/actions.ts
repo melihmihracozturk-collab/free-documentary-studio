@@ -18,7 +18,7 @@ const NewProject = z.object({
   language: z.enum(["tr", "en"]),
   target_minutes: z.coerce.number().min(8, "En az 8 dakika").max(15, "En fazla 15 dakika"),
   style: z.string().trim().min(2).max(120),
-  format: z.enum(["documentary", "vlog"]).default("documentary"),
+  format: z.enum(["documentary", "vlog", "review"]).default("documentary"),
 });
 
 export async function createProject(_prev: FormState, form: FormData): Promise<FormState> {

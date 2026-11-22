@@ -13,9 +13,9 @@ function slugify(input, max = 48) {
 }
 
 const { DATABASE_URL, TOPIC, MINUTES = "11", LANGUAGE = "tr", FORMAT = "documentary" } = process.env;
-const STYLE = process.env.STYLE || (FORMAT === "vlog" ? "Samimi gezi vlogu" : "Sinematik kısa belgesel");
-if (!["documentary", "vlog"].includes(FORMAT)) {
-  console.error("FORMAT documentary veya vlog olmalı");
+const STYLE = process.env.STYLE || (FORMAT === "vlog" ? "Samimi gezi vlogu" : FORMAT === "review" ? "Enerjik ve samimi öneri videosu" : "Sinematik kısa belgesel");
+if (!["documentary", "vlog", "review"].includes(FORMAT)) {
+  console.error("FORMAT documentary, vlog veya review olmalı");
   process.exit(1);
 }
 if (!DATABASE_URL || !TOPIC) {

@@ -17,6 +17,9 @@ Mimari ve servis seçimleri: [`docs/STAGE1_MIMARI_RAPORU.md`](docs/STAGE1_MIMARI
 | 6 | Bulut video montaj motoru: altyazı, Ken Burns, geçişler, ambiyans, ses seviyesi (FFmpeg) | ✅ |
 | 7 | Shorts motoru | ⏳ |
 | 8 | Teslim paketi (YouTube açıklaması, bölümler, kaynaklar), Dashboard kullanımı, iyileştirmeler | ✅ |
+| 9 | Anime / dizi / film öneri biçimi: animasyonlu kadın sunucu, otomatik ses, afiş + hareketli grafikler | ✅ (gerçek LLM/TTS ile henüz çalıştırılmadı) |
+
+Öneri videoları ve sunucu karakter: [`docs/ONERI_SUNUCU.md`](docs/ONERI_SUNUCU.md)
 
 ## Yapı
 
@@ -82,7 +85,7 @@ LLM yanıtları veritabanında önbelleğe alınır; bir adımı yeniden çalı�
 2. **GitHub Secrets** (repo → Settings → Secrets and variables → Actions):
    - `DATABASE_URL` (zorunlu)
    - `GEMINI_API_KEY` (araştırma/senaryo için; Google AI Studio'dan ücretsiz)
-   - opsiyonel: `GROQ_API_KEY`, `OPENROUTER_API_KEY` (+ `OPENROUTER_MODEL` değişkeni, `:free` model), `OPENALEX_API_KEY`, `EUROPEANA_API_KEY`
+   - opsiyonel: `TMDB_API_KEY` (öneri videoları: film/dizi bilgisi ve afiş), `GROQ_API_KEY`, `OPENROUTER_API_KEY` (+ `OPENROUTER_MODEL` değişkeni, `:free` model), `OPENALEX_API_KEY`, `EUROPEANA_API_KEY`
 3. **Şema:** repo → Actions → *migrate* → *Run workflow*.
 4. **Vercel:** GitHub ile giriş → bu repoyu içe aktarın → ortam değişkenleri: `.env.example` dosyasındakiler.
 5. Panel adresine girin, `ADMIN_PASSWORD` ile giriş yapın.

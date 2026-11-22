@@ -39,11 +39,26 @@ class Format:
     margin_v: int
     max_line: int
     max_lines: int = 2
+    margin_l: int = 80
+    margin_r: int = 80
 
 
 DOC = Format("doc", 1920, 1080, 25, 52, 70, 42, 2)
 # Dikey ekran dar: satır başına en fazla 24 karakter, 3 satıra kadar (satır birleştirme taşmaya yol açıyordu)
 SHORTS = Format("shorts", 1080, 1920, 30, 60, 420, 24, 3)
+# Öneri biçimi: altyazı sunucunun üstüne binmez (yatayda sol alan, dikeyde sunucunun hemen üstü)
+REVIEW_DOC = Format("doc", 1920, 1080, 25, 48, 60, 36, 2, margin_l=80, margin_r=860)
+REVIEW_SHORTS = Format("shorts", 1080, 1920, 30, 56, 800, 26, 2)
+
+
+def is_review(p) -> bool:
+    return (p.get("format") or "documentary") == "review"
+
+
+def fmt_for(p, base: Format) -> Format:
+    if not is_review(p):
+        return base
+    return REVIEW_DOC if base.kind == "doc" else REVIEW_SHORTS
 
 TRANSITIONS = {"crossfade": ("fade", 0.8), "fade_black": ("fadeblack", 1.0), "dip_white": ("fadewhite", 0.8),
                "wipe": ("wipeleft", 0.7), "slide": ("slideleft", 0.7), "cut": ("fade", 0.12)}
@@ -191,7 +206,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,DejaVu Sans,{fmt.font_size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,80,80,{fmt.margin_v},1
+Style: Default,DejaVu Sans,{fmt.font_size},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,{fmt.margin_l},{fmt.margin_r},{fmt.margin_v},1
 Style: Caption,DejaVu Sans,{int(fmt.font_size * 0.75)},&H00E6F2FF,&H000000FF,&H00000000,&H80000000,0,-1,0,0,100,100,1,0,1,2,1,7,80,80,60,1
 
 [Events]
@@ -226,13 +241,14 @@ def build_subtitles(conn, p, fmt: Format) -> dict:
     srt_key = storage.project_key(p["slug"], "subtitles", f"{fmt.kind}.srt")
     ass_key = storage.project_key(p["slug"], "subtitles", f"{fmt.kind}.ass")
     storage.upload_bytes(srt_key, to_srt(cues).encode(), "application/x-subrip; charset=utf-8")
-    storage.upload_bytes(ass_key, to_ass(cues, fmt, captions_for(scenes, bounds)).encode(), "text/plain; charset=utf-8")
+    caps = [] if is_review(p) else captions_for(scenes, bounds)      # öneride ekran yazıları grafiklerin içinde
+    storage.upload_bytes(ass_key, to_ass(cues, fmt, caps).encode(), "text/plain; charset=utf-8")
     return {"cues": len(cues), "srt_key": srt_key, "ass_key": ass_key}
 
 
 def subtitles(conn, step) -> StepResult:
     p = conn.execute("select * from projects where id=%s", (step["project_id"],)).fetchone()
-    return StepResult(output={fmt.kind: build_subtitles(conn, p, fmt) for fmt in (DOC, SHORTS)})
+    return StepResult(output={fmt.kind: build_subtitles(conn, p, fmt_for(p, fmt)) for fmt in (DOC, SHORTS)})
 
 
 # ----------------------------------------------------------------- görüntü hareketi
@@ -284,15 +300,38 @@ def ambient_filter(dur: float) -> str:
             f"afade=t=in:d=3,afade=t=out:st={max(0, dur - 4):.2f}:d=4,volume=0.55")
 
 
+CHORDS = [(261.63, 329.63, 392.0, 493.88), (220.0, 261.63, 329.63, 392.0),     # Cmaj7, Am7
+          (174.61, 220.0, 261.63, 329.63), (196.0, 246.94, 293.66, 392.0)]     # Fmaj7, G
+
+
+def lofi_filter(dur: float) -> str:
+    """Öneri videoları için telifsiz, sakin akor yastığı (Cmaj7-Am7-Fmaj7-G). Her akor 8 sn'lik sin² penceresiyle
+    çalar; pencereler yarı yarıya örtüştüğü için toplam ses düzeyi sabittir (tıklama/kesinti yok)."""
+    d = f"{dur + 1:.2f}"
+    terms = []
+    for k, chord in enumerate(CHORDS):
+        ph = f"mod(t+{16 - 4 * k},16)"
+        w = f"lt({ph},8)*pow(sin(PI*{ph}/8),2)"
+        notes = "+".join(f"{0.05 if i == 0 else 0.035}*sin(2*PI*{f}*t)" for i, f in enumerate(chord))
+        notes += f"+0.05*sin(2*PI*{chord[0] / 2}*t)"
+        terms.append(f"{w}*({notes})")
+    return (f"aevalsrc='({'+'.join(terms)})*(0.85+0.15*sin(2*PI*0.25*t))':s=48000:d={d},"
+            f"lowpass=f=1800,aformat=channel_layouts=stereo,aecho=0.8:0.5:120|240:0.3|0.2,"
+            f"afade=t=in:d=2,afade=t=out:st={max(0, dur - 3):.2f}:d=3,volume=0.5")
+
+
 # ----------------------------------------------------------------- birleştirme
 def assemble(clips: list[Path], lens: list[float], starts: list[float], trans: list[tuple[str, float]], audio: Path,
-             ass: Path | None, out: Path, fmt: Format, duration: float, tempo: float = 1.0, ambient: bool = True) -> None:
-    """Klipleri xfade ile birleştirir; renk/grain/vinyet, altyazı, ses miksajı (ducking + loudnorm)."""
+             ass: Path | None, out: Path, fmt: Format, duration: float, tempo: float = 1.0, ambient: bool = True,
+             overlay: tuple[Path, int, int] | None = None, look: str | None = None, music: str = "ambient") -> None:
+    """Klipleri xfade ile birleştirir; renk/grain/vinyet, (varsa) sunucu katmanı, altyazı, ses miksajı (ducking + loudnorm)."""
     inputs: list[str] = []
     for c in clips:
         inputs += ["-i", str(c)]
     inputs += ["-i", str(audio)]
     ai = len(clips)
+    if overlay:
+        inputs += ["-c:v", "libvpx-vp9", "-i", str(overlay[0])]      # VP9 alfa kanalı yalnızca libvpx ile çözülür
     fg, last = [], "[0:v]"
     for k in range(1, len(clips)):
         name, td = trans[k]
@@ -300,13 +339,18 @@ def assemble(clips: list[Path], lens: list[float], starts: list[float], trans: l
         fg.append(f"{last}[{k}:v]xfade=transition={name}:duration={td:.3f}:offset={starts[k]:.3f}{lbl}")
         last = lbl
     # Hafif gren: her karede değişen gürültü sıkıştırmayı zorlaştırır; bit hızı tavanıyla birlikte dengeli tutulur
-    look = "eq=contrast=1.06:saturation=0.92:gamma=0.98,vignette=angle=PI/5,noise=alls=3:allf=t"
+    look = look or "eq=contrast=1.06:saturation=0.92:gamma=0.98,vignette=angle=PI/5,noise=alls=3:allf=t"
     sub = f",subtitles=filename='{ass}'" if ass else ""
-    fg.append(f"{last}{look}{sub},trim=duration={duration:.3f},format=yuv420p[vout]")
+    if overlay:
+        fg.append(f"{last}{look}[lk]")
+        fg.append(f"[lk][{ai + 1}:v]overlay=x={overlay[1]}:y={overlay[2]}:format=auto:eof_action=pass[ov]")
+        fg.append(f"[ov]format=yuv420p{sub},trim=duration={duration:.3f},format=yuv420p[vout]")
+    else:
+        fg.append(f"{last}{look}{sub},trim=duration={duration:.3f},format=yuv420p[vout]")
     voice = f"[{ai}:a]aresample=48000,aformat=channel_layouts=stereo" + (f",atempo={tempo:.4f}" if abs(tempo - 1) > 1e-3 else "")
     if ambient:
         fg.append(f"{voice},asplit=2[v1][vsc]")
-        fg.append(ambient_filter(duration) + "[amb]")
+        fg.append((lofi_filter(duration) if music == "lofi" else ambient_filter(duration)) + "[amb]")
         fg.append("[amb][vsc]sidechaincompress=threshold=0.02:ratio=10:attack=30:release=600:makeup=1[duck]")
         fg.append("[v1][duck]amix=inputs=2:normalize=0:duration=first,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]")
     else:
@@ -367,6 +411,8 @@ def render_video(conn, step, fmt: Format, out_name: str, tempo: float = 1.0) -> 
     if not v:
         raise RuntimeError("Analiz edilmiş gerçek seslendirme yok")       # (veritabanı kuralı da render'ı engeller)
     visuals.download_selected(conn, p["id"], p["slug"])                   # eksik görselleri tamamla
+    if is_review(p):
+        return _render_review(conn, p, v, fmt, out_name, tempo)
     scenes = conn.execute("select s.*, a.storage_key as img_key, a.sha256 as img_sha, a.width as img_w, a.height as img_h "
                           "from scenes s left join assets a "
                           "on a.id = s.asset_id where s.project_id=%s and s.kind=%s order by s.idx", (p["id"], fmt.kind)).fetchall()
@@ -431,6 +477,93 @@ def render_video(conn, step, fmt: Format, out_name: str, tempo: float = 1.0) -> 
                       output_key=key, sha256=sha)
 
 
+def _render_review(conn, p, v, fmt: Format, out_name: str, tempo: float) -> StepResult:
+    """Öneri videosu: sahne başına hareketli grafik klibi + tüm video boyunca konuşan sunucu katmanı."""
+    from . import motion, presenter, review
+
+    scenes = conn.execute("select s.*, a.storage_key as img_key, a.sha256 as img_sha from scenes s left join assets a "
+                          "on a.id = s.asset_id where s.project_id=%s and s.kind=%s order by s.idx", (p["id"], fmt.kind)).fetchall()
+    titles = {t["ref"]: t for t in review.titles(conn, p["id"])}
+    order = list(titles)
+    sc = conn.execute("select content from scripts where project_id=%s and kind='doc' order by version desc limit 1",
+                      (p["id"],)).fetchone()
+    act_titles = ((sc or {}).get("content") or {}).get("act_titles") or {}
+    duration = float(v["duration_sec"]) / tempo
+    bounds = [(float(s["start_sec"]) / tempo, float(s["end_sec"]) / tempo) for s in scenes]
+    starts, lens, trans = plan_timeline(bounds, [s["transition"] for s in scenes], duration)
+    stage = presenter.DOC_STAGE if fmt.kind == "doc" else presenter.SHORTS_STAGE
+
+    reused = rendered = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        clips, posters = [], {}
+        for i, s in enumerate(scenes):
+            t = titles.get(s["title_ref"] or "")
+            layout = s["layout"] or ("title" if t else "host")
+            rank = order.index(s["title_ref"]) + 1 if t else None
+            heading = act_titles.get(s["act"] or "") if not t else None
+            h = motion.scene_key(layout, t, s["on_screen_text"], rank, heading, lens[i], fmt.kind, s["img_sha"])
+            key = storage.project_key(p["slug"], "scenes", fmt.kind, f"{s['idx']:03d}-{h}.mp4")
+            path = tmp / f"clip{i:03d}.mp4"
+            if _exists(key):
+                storage.download(key, path)
+                reused += 1
+            else:
+                poster = None
+                if s["img_key"]:
+                    poster = posters.get(s["img_key"]) or storage.download(s["img_key"], tmp / f"poster{len(posters)}.jpg")
+                    posters[s["img_key"]] = poster
+                motion.render_scene(path, tmp, lens[i], fmt, layout, t, poster, s["on_screen_text"], rank, heading,
+                                    seed=s["idx"])
+                storage.upload_file(key, path, "video/mp4")
+                rendered += 1
+            clips.append(path)
+        audio = storage.download(v["storage_key"], tmp / ("voice" + Path(v["storage_key"]).suffix))
+        # Sunucu: sesin genliğinden dudak senkronu; sahne düzenine göre büyük / orta / gizli
+        timeline = [(b[0], b[1], s["layout"] or "host") for b, s in zip(bounds, scenes)]
+        ph = hashlib.sha256(json.dumps([presenter.PRESENTER_VERSION, v["sha256"], timeline, fmt.kind, tempo, fmt.fps]).encode()).hexdigest()[:16]
+        pkey = storage.project_key(p["slug"], "scenes", fmt.kind, f"presenter-{ph}.webm")
+        ppath = tmp / "presenter.webm"
+        if _exists(pkey):
+            storage.download(pkey, ppath)
+        else:
+            samples = voiceover.decode_16k(audio)
+            presenter.render(ppath, duration, fmt.fps, stage, timeline, samples, 16000, tempo, seed=len(p["slug"]))
+            storage.upload_file(pkey, ppath, "video/webm")
+        ass_key = storage.project_key(p["slug"], "subtitles", f"{fmt.kind}.ass")
+        ass = storage.download(ass_key, tmp / f"{fmt.kind}.ass") if _exists(ass_key) else None
+        if ass and abs(tempo - 1) > 1e-3:
+            ass.write_text(_retime_ass(ass.read_text(), tempo))
+        out = tmp / out_name
+        assemble(clips, lens, starts, trans, audio, ass, out, fmt, duration, tempo=tempo,
+                 overlay=(ppath, stage.region_x, stage.region_y), look="eq=saturation=1.04:contrast=1.02", music="lofi")
+        return _finish(conn, p, fmt, out, out_name, duration, tmp, {"clips_rendered": rendered, "clips_reused": reused,
+                                                                    "scenes": len(scenes), "tempo": tempo, "presenter": True})
+
+
+def _finish(conn, p, fmt: Format, out: Path, out_name: str, duration: float, tmp: Path, extra: dict) -> StepResult:
+    """Çıktı denetimi, R2'ye yükleme, kontrol görseli ve renders kaydı."""
+    info = probe(out)
+    got = float(info["format"]["duration"])
+    vs = next(x for x in info["streams"] if x["codec_type"] == "video")
+    if abs(got - duration) > 1.0 or (vs["width"], vs["height"]) != (fmt.w, fmt.h):
+        raise RuntimeError(f"Çıktı kontrolü başarısız: süre {got:.1f}/{duration:.1f} sn, {vs['width']}x{vs['height']}")
+    folder = "renders" if fmt.kind == "doc" else "shorts"
+    key = storage.project_key(p["slug"], folder, out_name)
+    sha = storage.upload_file(key, out, "video/mp4")
+    size = out.stat().st_size
+    sheet = tmp / "contact.jpg"
+    contact_sheet(out, sheet, got, fmt)
+    poster_key = storage.project_key(p["slug"], folder, f"{fmt.kind}_contact.jpg")
+    storage.upload_file(poster_key, sheet, "image/jpeg")
+    removed = delete_prefix(storage.project_key(p["slug"], "scenes", fmt.kind) + "/")
+    conn.execute("delete from renders where project_id=%s and kind=%s", (p["id"], fmt.kind))
+    conn.execute("insert into renders (project_id, kind, storage_key, width, height, fps, duration_sec, bytes, sha256, status, poster_key) "
+                 "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,'done',%s)", (p["id"], fmt.kind, key, fmt.w, fmt.h, fmt.fps, got, size, sha, poster_key))
+    return StepResult(output={"duration_sec": round(got, 2), "bytes": size, "mbps": round(size * 8 / got / 1e6, 2),
+                              "clips_deleted": removed, "codec": vs["codec_name"], **extra}, output_key=key, sha256=sha)
+
+
 def contact_sheet(video: Path, out: Path, duration: float, fmt: Format, n: int = 9) -> None:
     """Videodan eşit aralıklı n kare → 3x3 kontrol görseli (kalite kontrolü ve panel önizlemesi)."""
     tw = 640 if fmt.kind == "doc" else 360
@@ -485,7 +618,8 @@ def shorts_tempo(duration: float, max_seconds: float, tempo_max: float) -> tuple
 
 
 def render_doc(conn, step) -> StepResult:
-    return render_video(conn, step, DOC, "documentary.mp4")
+    p = conn.execute("select format from projects where id=%s", (step["project_id"],)).fetchone()
+    return render_video(conn, step, fmt_for(p, DOC), "documentary.mp4")
 
 
 def render_shorts(conn, step) -> StepResult:
@@ -499,8 +633,8 @@ def render_shorts(conn, step) -> StepResult:
                                float(st.get("shorts_auto_tempo_max", 1.15)))
     p = conn.execute("select * from projects where id=%s", (step["project_id"],)).fetchone()
     if conn.execute("select 1 from voiceovers where project_id=%s and kind='shorts' and words_key is not null", (p["id"],)).fetchone():
-        build_subtitles(conn, p, SHORTS)                  # ucuz; altyazı kuralları değiştiyse Shorts kendi başına güncellenir
-    res = render_video(conn, step, SHORTS, "shorts.mp4", tempo=tempo)
+        build_subtitles(conn, p, fmt_for(p, SHORTS))      # ucuz; altyazı kuralları değiştiyse Shorts kendi başına güncellenir
+    res = render_video(conn, step, fmt_for(p, SHORTS), "shorts.mp4", tempo=tempo)
     if warn:
         conn.execute("insert into error_logs (project_id, job_id, step_key, level, message) values (%s,%s,%s,'warning',%s)",
                      (step["project_id"], step["job_id"], step["step_key"], warn))
