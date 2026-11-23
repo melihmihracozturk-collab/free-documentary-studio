@@ -95,7 +95,7 @@ def test_collect_review_uses_catalogs_and_keeps_media_articles(conn, monkeypatch
         {"name_en": "Frieren", "name_native": "Frieren", "kind": "anime", "year": 2023, "wiki_en": "Frieren"},
         {"name_en": "Imaginary Show", "name_native": "Hayali", "kind": "series", "year": 2020, "wiki_en": "Imaginary Show"}],
         "core_keywords": ["Frieren"]})
-    monkeypatch.setattr(catalog, "anilist", lambda q: ({"year": 2023, "episodes": 28, "poster_url": "https://img/f.jpg",
+    monkeypatch.setattr(catalog, "anilist", lambda q, year=None: ({"year": 2023, "episodes": 28, "poster_url": "https://img/f.jpg",
                                                         "poster_source": "anilist", "color": "#bbf1a1"},
                                                        S.Source("https://anilist.co/anime/1", "Frieren", "AniList", "catalog",
                                                                 "anilist", "Frieren is a Japanese anime. " * 20))
@@ -140,7 +140,7 @@ class FakeReview:
             return {"insert_after": []}
         if "YouTube Shorts" in prompt:
             self.calls.append("shorts")
-            assert "quick-fire picks" in prompt and "STANDALONE" in prompt and "full recommendation" not in prompt
+            assert "vivid spoiler-free premise" in prompt and "STANDALONE" in prompt and "full recommendation" not in prompt
             sizes = [int(x) for x in re.search(r"narration lengths in words: \[([^\]]*)\]", prompt).group(1).split(",")]
             return {"title": "Kış", "scenes": [scene(round(w / script.LENGTH_BOOST) if i else w, ["C1"])
                                                for i, w in enumerate(sizes)]}
@@ -385,3 +385,20 @@ def test_long_title_words_shrink_to_fit():
     d = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
     f, lines = motion.fit_font(d, "Bleach: Thousand-Year Blood War", 66, 360, 3)
     assert f.size < 66 and all(d.textlength(ln, font=f) <= 360 for ln in lines) and len(lines) <= 3
+
+
+def test_anilist_prefers_requested_year(monkeypatch):
+    def media(year, mid):
+        return {"id": mid, "siteUrl": f"https://anilist.co/anime/{mid}", "isAdult": False, "format": "TV", "episodes": 25,
+                "seasonYear": year, "title": {"romaji": "Berserk", "english": "Berserk", "native": "剣風伝奇ベルセルク"},
+                "description": "A lone mercenary.", "studios": {"nodes": []}, "coverImage": {}, "genres": []}
+    monkeypatch.setattr(catalog.http, "request",
+                        lambda *a, **k: Resp({"data": {"Page": {"media": [media(2016, 21560), media(1997, 33)]}}}))
+    assert catalog.anilist("Berserk", 1997)[0]["year"] == 1997
+    assert catalog.anilist("Berserk")[0]["year"] == 2016                 # yıl yoksa arama sırası
+
+
+def test_review_style_is_lively_and_safe():
+    st = review.STYLE_REVIEW
+    assert "NEVER list stats" in st and "ONE number per scene" in st and "SPOILER-FREE" in st
+    assert "heads-up" in st and "Never invent content warnings" in st
