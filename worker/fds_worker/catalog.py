@@ -76,7 +76,8 @@ def similar(a: str, b: str) -> bool:
 
 
 # ----------------------------------------------------------------- AniList
-def anilist(query: str) -> tuple[dict, Source] | None:
+def anilist(query: str, year: int | None = None) -> tuple[dict, Source] | None:
+    """year verilirse aynı adlı yapımlardan o yılın yapımı seçilir (ör. Berserk 1997 / 2016)."""
     import httpx
 
     try:
@@ -95,7 +96,9 @@ def anilist(query: str) -> tuple[dict, Source] | None:
     exact = [m for m in ok if any(_norm(query) == _norm(n) for n in names(m))]
     if not ok:
         return None
-    m = (exact or ok)[0]
+    pool = exact or ok
+    same_year = [m for m in pool if year and m.get("seasonYear") == year]
+    m = (same_year or pool)[0]
     t = m["title"]
     studio = ", ".join(n["name"] for n in (m.get("studios") or {}).get("nodes") or [])
     desc = _clean(re.sub(r"\(Source:[^)]*\)", "", m.get("description") or ""))

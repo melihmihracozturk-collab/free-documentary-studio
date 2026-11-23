@@ -545,8 +545,8 @@ Write an independent YouTube Shorts script ({p['shorts_seconds']} seconds, verti
 Topic: {p['topic']}. {"This Shorts is a STANDALONE recommendation video (there is no longer video)." if review else f'The full {film} is titled: "{doc["t"] if doc else p["title"]}".'}
 
 Write EXACTLY {len(per_scene)} scenes with these narration lengths in words: {[round(w * LENGTH_BOOST) if i else w for i, w in enumerate(per_scene)]}.
-- Scene 1 = HOOK (about 3 seconds): instant curiosity — a shocking fact, a question or tension. It must be TRUE to the claims.
-- {"The most striking places/facts of the route as a quick teaser" if vlog else "The host's quick-fire picks: one or two spoiler-free lines per title, name each title clearly" if review else "One focused story arc with escalating tension"}; it must make sense on its own.
+- Scene 1 = HOOK (about 3 seconds): instant curiosity — a shocking fact, a question or tension. It must be TRUE to the claims.{" For the host: bold and playful, e.g. a dare or a dramatic question, not a generic 'hazır mısınız'." if review else ""}
+- {"The most striking places/facts of the route as a quick teaser" if vlog else "Structure: HOOK → vivid spoiler-free premise (what is at stake, how it feels) → one or two standout things that make it special (as excited reactions, not a stat list) → who would love it (+ a quick content heads-up if the claims show it is dark/violent) → question. Name each title clearly" if review else "One focused story arc with escalating tension"}; it must make sense on its own.
 - Last scene: {"a short question to the viewer (e.g. which one they will start with / have they seen it) — no 'like and subscribe'" if review else f'a natural line that makes viewers want the full {film} (no "like and subscribe")'}.
 - Visuals must work in vertical framing (close-ups, details, single subjects).
 
@@ -568,7 +568,9 @@ CLAIMS:
         raise RuntimeError("Shorts senaryosu üretilemedi: " + "; ".join(errs[:5]))
     scenes, edits = _edit(conn, p, "shorts", scenes, claims, status, budget,
                           "5. This is a 45-60 s Shorts: keep scene 1 as a hook of at most 8 words. Keep 6-10 scenes.\n"
-                          + ("6. The last line is a short question to the viewer — no 'abone ol', 'beğen', no mention of a longer video."
+                          + ("6. The last line is a short question to the viewer — no 'abone ol', 'beğen', no mention of a longer video.\n"
+                             "7. KEEP THE HOST'S ENERGY AND HUMOUR: do not flatten lively lines into neutral report sentences; "
+                             "rewrite dry stat-lists into excited reactions with at most one number per scene."
                            if review else
                            f"6. The last line invites to the full {film} naturally — no 'izleyin', 'hemen', 'abone ol', 'beğen'."),
                           style=style)

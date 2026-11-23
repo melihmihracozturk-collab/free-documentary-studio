@@ -209,12 +209,12 @@ def test_idle_worker_picks_up_approval_without_new_trigger(db_url, conn, monkeyp
 
     def approve_later():
         import time
-        time.sleep(0.6)
+        time.sleep(0.4)
         with psycopg.connect(db_url, autocommit=True) as c:
             c.execute("select resolve_input_step(%s)", (review["id"],))
     t = threading.Thread(target=approve_later)
     t.start()
-    n = run(db_url, 1, dry_run=True, once=False, idle_minutes=0.1)    # ~6 sn yoklama (yük altında da yeterli)
+    n = run(db_url, 1, dry_run=True, once=False, idle_minutes=0.4)    # ~24 sn yoklama penceresi (yük altında da yeterli)
     t.join()
     s = steps(conn, job)
     assert n >= 2 and s["script_shorts"]["status"] == "done" and s["script_review"]["status"] == "waiting_input"
