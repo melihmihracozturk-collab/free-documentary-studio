@@ -87,7 +87,8 @@ def run(url: str, max_minutes: float, dry_run: bool, once: bool, idle_minutes: f
                 break
             idle_until = None                      # iş geldi: bekleme süresi sonraki boşlukta yeniden başlar
 
-            print(f"[worker] → {step['step_key']} (deneme {step['attempts']}/{step['max_attempts']})")
+            proj = conn.execute("select slug from projects where id=%s", (step["project_id"],)).fetchone()
+            print(f"[worker] → {proj['slug'] if proj else '?'}: {step['step_key']} (deneme {step['attempts']}/{step['max_attempts']})")
             hb = Heartbeat(url, step["id"], worker_id)
             hb.start()
             try:
