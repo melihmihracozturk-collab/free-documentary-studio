@@ -233,3 +233,16 @@ def test_idle_disabled_or_nothing_waiting_exits_immediately(db_url, conn):
     t0 = time.monotonic()
     run(db_url, 1, dry_run=True, once=False, idle_minutes=1)          # eski bekleyen iş → yoklama yok
     assert time.monotonic() - t0 < 2
+
+
+def test_old_worker_does_not_idle(db_url, conn, monkeypatch):
+    """Uzun süredir çalışan işçi beklemeye girmez (eski kodla senaryo yazmasın; yeni çalıştırma yeni kodu alır)."""
+    import time
+
+    from fds_worker import main as M
+    monkeypatch.setattr(M, "IDLE_MAX_AGE_MIN", 0)
+    make_project(conn)
+    run(db_url, 1, dry_run=True, once=False)                          # onay bekleyen iş oluşur
+    t0 = time.monotonic()
+    run(db_url, 1, dry_run=True, once=False, idle_minutes=1)
+    assert time.monotonic() - t0 < 2

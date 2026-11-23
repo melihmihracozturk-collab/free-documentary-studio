@@ -26,6 +26,7 @@ from .llm import QuotaExhausted
 
 HEARTBEAT_SEC = 30
 IDLE_POLL_SEC = 20
+IDLE_MAX_AGE_MIN = 40      # bu kadar dakikadır çalışan işçi beklemeye girmez: yeni kod sonraki çalıştırmada devreye girer
 
 
 def waiting_for_user(conn) -> bool:
@@ -63,6 +64,7 @@ def run(url: str, max_minutes: float, dry_run: bool, once: bool, idle_minutes: f
     deadline = time.monotonic() + max_minutes * 60
     processed = 0
     idle_until: float | None = None
+    started = time.monotonic()
 
     with connect(url) as conn:
         requeued = conn.execute("select requeue_stale_steps() as n").fetchone()["n"]
@@ -76,7 +78,8 @@ def run(url: str, max_minutes: float, dry_run: bool, once: bool, idle_minutes: f
                 "select * from claim_next_step(%s, %s)", (worker_id, list(handlers))
             ).fetchone()
             if step is None:
-                if idle_minutes > 0 and not once and waiting_for_user(conn):
+                young = time.monotonic() - started < IDLE_MAX_AGE_MIN * 60
+                if idle_minutes > 0 and not once and young and waiting_for_user(conn):
                     if idle_until is None:
                         idle_until = time.monotonic() + idle_minutes * 60
                         print(f"[worker] Onay bekleyen iş var; {idle_minutes:g} dk boyunca kuyruk yoklanıyor.")
