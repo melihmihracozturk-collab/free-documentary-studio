@@ -197,27 +197,30 @@ def test_voiceovers_uploaded_before_wait_step_opens(db_url, conn):
 
 
 def test_idle_worker_picks_up_approval_without_new_trigger(db_url, conn, monkeypatch):
-    """Panel GitHub'ı tetikleyemese bile: işçi onay bekleyen iş varken kuyruğu yoklar, onay gelince devam eder."""
-    import threading
+    """Panel GitHub'ı tetikleyemese bile: işçi onay bekleyen iş varken kuyruğu yoklar, onay gelince devam eder.
+    Onay, işçinin ilk yoklama beklemesi sırasında verilir (zamanlamadan bağımsız, CI'da kararlı)."""
+    import time as _time
 
     from fds_worker import main as M
-    monkeypatch.setattr(M, "IDLE_POLL_SEC", 0.2)
     pid, job = make_project(conn)
     run(db_url, 1, dry_run=True, once=False)                        # araştırma onayında durur
     review = steps(conn, job)["research_review"]
     assert review["status"] == "waiting_input"
 
-    def approve_later():
-        import time
-        time.sleep(0.4)
-        with psycopg.connect(db_url, autocommit=True) as c:
-            c.execute("select resolve_input_step(%s)", (review["id"],))
-    t = threading.Thread(target=approve_later)
-    t.start()
-    n = run(db_url, 1, dry_run=True, once=False, idle_minutes=0.4)    # ~24 sn yoklama penceresi (yük altında da yeterli)
-    t.join()
+    real_sleep = _time.sleep
+    calls = []
+
+    def fake_sleep(sec):
+        calls.append(sec)
+        if len(calls) == 1:                                         # ilk yoklamada kullanıcı onay veriyor
+            with psycopg.connect(db_url, autocommit=True) as c:
+                c.execute("select resolve_input_step(%s)", (review["id"],))
+        real_sleep(0.01)
+    monkeypatch.setattr(M.time, "sleep", fake_sleep)
+    monkeypatch.setattr(M, "IDLE_POLL_SEC", 0.2)
+    n = run(db_url, 1, dry_run=True, once=False, idle_minutes=0.05)
     s = steps(conn, job)
-    assert n >= 2 and s["script_shorts"]["status"] == "done" and s["script_review"]["status"] == "waiting_input"
+    assert calls and n >= 2 and s["script_shorts"]["status"] == "done" and s["script_review"]["status"] == "waiting_input"
 
 
 def test_idle_disabled_or_nothing_waiting_exits_immediately(db_url, conn):
