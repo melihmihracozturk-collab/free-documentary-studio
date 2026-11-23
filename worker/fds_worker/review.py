@@ -53,6 +53,10 @@ STYLE_REVIEW = """NARRATION STYLE (very important — this is what makes the cha
 - Tell it like a story: describe the premise with vivid, emotional words (what is at stake, how it feels), never as a dry
   summary. Weave facts in naturally — NEVER list stats. At most ONE number per scene; drop boring numbers rather than
   stacking them (no "X incelemeye dayanarak yüzde Y onay" style lines).
+- At most TWO facts per scene. Never cram author + director + studio + dates into one sentence; spread them out or drop
+  the least interesting. A date range counts as two numbers: say only the year ("doksan yedide çıktı").
+- The HOOK must be bold and specific to this title (a dare, a dramatic image, a surprising claim from the claims).
+  BAD hooks: "X izlediniz mi?", "Hazır mısınız?", "Bugün size X'i anlatacağım." GOOD: "Kılıcı kendisinden büyük bir adam düşünün."
 - Avoid report Turkish: no "-mıştır/-miştir", no "tarafından üretilmiş olan", no "olarak karşımıza çıkıyor",
   no "bu yapım", no "inceliyorum". Prefer active, lively verbs ("Bones çizmiş", "müzikleri Akira Senju'dan").
 - "bence" ONLY for real opinions, never in front of a fact. Do not call something "the best of all time" as a fact.
